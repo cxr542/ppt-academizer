@@ -812,23 +812,27 @@ def hide_empty_governing_placeholder(slide) -> None:
 def polish_academy_presentation(prs: Presentation) -> None:
     """Apply content title styling to all 본문 layout slides."""
     global _PLACEHOLDER_GEOM
-    if _PLACEHOLDER_GEOM is None:
-        _PLACEHOLDER_GEOM = (
-            _capture_seed_placeholder_geometry(prs),
-            _capture_layout_placeholder_geometry(prs),
-        )
-    sw = int(prs.slide_width)
-    for slide in prs.slides:
-        if slide.slide_layout.name not in CONTENT_TITLE_LAYOUTS:
-            continue
-        title = ""
-        for sh in slide.placeholders:
-            if sh.placeholder_format.idx == 10:
-                title = normalize_slide_title(sh.text or "")
-        ensure_content_body_placeholder_geometry(slide)
-        if title:
-            apply_slide_title_layout(slide, sw, title)
-        hide_empty_governing_placeholder(slide)
+    prev = _PLACEHOLDER_GEOM
+    try:
+        if _PLACEHOLDER_GEOM is None:
+            _PLACEHOLDER_GEOM = (
+                _capture_seed_placeholder_geometry(prs),
+                _capture_layout_placeholder_geometry(prs),
+            )
+        sw = int(prs.slide_width)
+        for slide in prs.slides:
+            if slide.slide_layout.name not in CONTENT_TITLE_LAYOUTS:
+                continue
+            title = ""
+            for sh in slide.placeholders:
+                if sh.placeholder_format.idx == 10:
+                    title = normalize_slide_title(sh.text or "")
+            ensure_content_body_placeholder_geometry(slide)
+            if title:
+                apply_slide_title_layout(slide, sw, title)
+            hide_empty_governing_placeholder(slide)
+    finally:
+        _PLACEHOLDER_GEOM = prev
 
 
 def fix_open_in_slide_view(path: Path) -> None:

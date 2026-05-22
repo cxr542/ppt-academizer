@@ -964,6 +964,36 @@ def migrate_cmp_deck(
         _capture_seed_placeholder_geometry(prs),
         _capture_layout_placeholder_geometry(prs),
     )
+    try:
+        return _migrate_cmp_deck_body(
+            prs,
+            src,
+            output,
+            template,
+            cfg,
+            plan,
+            expected_slides,
+            warnings,
+            skip_ooxml_repair=skip_ooxml_repair,
+            skip_powerpoint_repair=skip_powerpoint_repair,
+        )
+    finally:
+        adl._PLACEHOLDER_GEOM = None
+
+
+def _migrate_cmp_deck_body(
+    prs,
+    src,
+    output: Path,
+    template: Path,
+    cfg,
+    plan,
+    expected_slides: int,
+    warnings: list,
+    *,
+    skip_ooxml_repair: bool,
+    skip_powerpoint_repair: bool,
+) -> tuple[Path, list[dict], int]:
     sw, sh = int(prs.slide_width), int(prs.slide_height)
     seeds = layout_seed_slides(prs)
     for name in (LAYOUT_COVER, LAYOUT_TOC, LAYOUT_SECTION, LAYOUT_CONTENT):

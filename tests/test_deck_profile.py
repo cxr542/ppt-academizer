@@ -10,7 +10,13 @@ from pptx import Presentation
 from pptx.util import Inches
 
 from scripts.convert_legacy_deck_to_academy import convert_presentation, validate_spec
-from scripts.deck_profile import analyze_deck_structure, detect_deck_profile, is_partner_shape_heavy
+from scripts.deck_profile import (
+    ai_filename_hint,
+    analyze_deck_structure,
+    detect_deck_profile,
+    is_ai_freeform_text_deck,
+    is_partner_shape_heavy,
+)
 from scripts.front_matter import _is_toc_like, extract_front_matter
 
 
@@ -48,7 +54,30 @@ def test_sparse_deck_stays_spec_even_with_contrabass_filename(tmp_path: Path) ->
     _blank_deck(p, slides=5, boxes_per_slide=1)
     profile, meta = detect_deck_profile(p)
     assert profile == "spec"
-    assert meta.get("reason") in ("text_lecture_structure", "extractable_text_blocks", "default_spec_heuristic")
+    assert meta.get("reason") in (
+        "text_lecture_structure",
+        "extractable_text_blocks",
+        "default_spec_heuristic",
+        "ai_freeform_export",
+    )
+
+
+def test_ai_like_deck_routes_spec(tmp_path: Path) -> None:
+    """Blank layout + text boxes (ChatGPT-style) → spec, not migrate_cmp."""
+    p = tmp_path / "chatgpt-course-draft.pptx"
+    prs = Presentation()
+    prs.slide_width = Inches(13.333)
+    prs.slide_height = Inches(7.5)
+    blank = prs.slide_layouts[6] if len(prs.slide_layouts) > 6 else prs.slide_layouts[0]
+    for title in ("AI Course", "1. One\n2. Two", "Body"):
+        s = prs.slides.add_slide(blank)
+        s.shapes.add_textbox(Inches(1), Inches(1), Inches(8), Inches(2)).text_frame.text = title
+    prs.save(p)
+    profile, meta = detect_deck_profile(p)
+    st = analyze_deck_structure(Presentation(str(p)))
+    assert profile == "spec"
+    assert meta.get("reason") in ("ai_freeform_export", "text_lecture_structure")
+    assert ai_filename_hint(p.name)
 
 
 def test_detect_cmp_filename(tmp_path: Path) -> None:

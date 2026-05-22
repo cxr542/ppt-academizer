@@ -133,6 +133,17 @@
       color: #5c6578;
     }
     .about-box .caveat strong { color: var(--text); font-weight: 700; }
+    .api-banner {
+      margin: 0 0 1rem;
+      padding: 0.65rem 0.85rem;
+      border-radius: 8px;
+      background: #fff4e6;
+      border: 1px solid #f0c878;
+      font-size: 0.82rem;
+      color: #6b4e12;
+      line-height: 1.45;
+    }
+    .api-banner.hidden { display: none; }
     .badge {
       position: absolute;
       top: 0.6rem;
@@ -333,10 +344,15 @@
       .flow-meta { display: flex; flex-direction: column; }
     }
   </style>
+  <script src="/config.js"></script>
 </head>
 <body>
   <div class="wrap">
     <h1>PPT 아카데미화</h1>
+    <p id="apiBanner" class="api-banner hidden" role="status">
+      변환 API에 연결되지 않았습니다. Netlify에서는 <code>PPT_ACADEMIZER_API_URL</code> 환경 변수로 Python API 주소를 지정해야 합니다.
+      (<a href="https://github.com/cxr542/ppt-academizer/blob/main/docs/DEPLOY-NETLIFY.md" target="_blank" rel="noopener">배포 안내</a>)
+    </p>
     <p class="sub" id="limits-hint">PowerPoint(.pptx) → OKESTRO 아카데미 강의안 변환 · 한도 확인 중…</p>
     <aside class="about-box" id="aboutService" aria-label="서비스 안내">
       <h2>PPT 아카데미화란?</h2>
@@ -474,18 +490,39 @@
     const qualityDisclaimer = document.getElementById("qualityDisclaimer");
     const limitsHint = document.getElementById("limits-hint");
     let serverLimits = { maxUploadMb: 50, standardMaxSlides: 40 };
+    let apiOnline = false;
+
+    function apiBase() {
+      return (window.__PPT_ACADEMIZER_API__ || "").replace(/\/$/, "");
+    }
+    function apiUrl(path) {
+      const b = apiBase();
+      return b ? b + path : path;
+    }
 
     async function loadServerLimits() {
+      const banner = document.getElementById("apiBanner");
       try {
-        const res = await fetch("/health");
-        if (!res.ok) return;
+        const res = await fetch(apiUrl("/health"));
+        if (!res.ok) {
+          banner.classList.remove("hidden");
+          return;
+        }
         const h = await res.json();
+        apiOnline = !!h.ok;
+        if (!apiOnline || h.template_configured === false) {
+          banner.classList.remove("hidden");
+        } else {
+          banner.classList.add("hidden");
+        }
         serverLimits.maxUploadMb = h.max_upload_mb ?? serverLimits.maxUploadMb;
         serverLimits.standardMaxSlides = h.standard_max_slides ?? serverLimits.standardMaxSlides;
         limitsHint.textContent =
           "PowerPoint(.pptx) → OKESTRO 아카데미 강의안 · 업로드 " +
-          serverLimits.maxUploadMb + "MB · 표준 모드 권장 " + serverLimits.standardMaxSlides + "장 이하";
+          serverLimits.maxUploadMb + "MB · 표준 모드 권장 " + serverLimits.standardMaxSlides + "장 이하" +
+          (h.service_version ? " · v" + h.service_version : "");
       } catch (_) {
+        banner.classList.remove("hidden");
         limitsHint.textContent =
           "PowerPoint(.pptx) → OKESTRO 아카데미 강의안 · 업로드 " +
           serverLimits.maxUploadMb + "MB · 표준 모드 권장 " + serverLimits.standardMaxSlides + "장 이하";
@@ -629,7 +666,7 @@
       status.className = "";
       wizardBody.classList.add("hidden");
       try {
-        const res = await fetch("/wizard/preview", { method: "POST", body: fd });
+        const res = await fetch(apiUrl("/wizard/preview"), { method: "POST", body: fd });
         let data = await res.json();
         if (!res.ok) {
           const msg = typeof data.detail === "string" ? data.detail : (data.detail?.message || res.statusText);
@@ -735,7 +772,7 @@
       const est = estimatedOutputSlides();
       if (est != null) fd.append("estimated_output_slides", String(est));
       try {
-        const res = await fetch("/academize", { method: "POST", body: fd });
+        const res = await fetch(apiUrl("/academize"), { method: "POST", body: fd });
         if (!res.ok) {
           let msg = res.statusText;
           try {

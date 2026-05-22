@@ -4,24 +4,33 @@
 
 PPT **아카데미화** 서비스 (계획: [PLAN.md](PLAN.md) · 독립 실행: [docs/standalone.md](docs/standalone.md)).
 
-**현재 릴리즈:** [1.6.4](CHANGELOG.md) · [CHANGELOG](CHANGELOG.md)
+**현재 릴리즈:** [1.6.5](CHANGELOG.md) · [CHANGELOG](CHANGELOG.md)
 
 ## 웹 UI
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 ./scripts/run_server.sh
+# 개발(자동 재시작·0.0.0.0): PPT_ACADEMIZER_DEV=1 ./scripts/run_server.sh
 ```
 
 브라우저: **http://127.0.0.1:8765/** — **`.pptx` 업로드** → 덱 유형 확인 → **아카데미화** → 다운로드.
 
+서버 기본값: **localhost**, Mac PowerPoint 자동 복구 **끔** (`PPT_ACADEMIZER_SKIP_PP_REPAIR=1`). 복구 팝업이 필요하면 `PPT_ACADEMIZER_SKIP_PP_REPAIR=0`으로 실행.
+
 - **PPT 아카데미화란?** `.pptx`의 텍스트·슬라이드 구성을 아카데미 강의안 형식으로 맞춥니다. **단, 이미지(사진·차트 등)는 변환하지 않습니다.**
+- **자동 분석:** 덱 구조 스캔 → AI·Google·CMP형 감지 → 표지/목차/본문 레이아웃 분류 → spec(§5) 또는 도형 이식(§7) 경로 추천 (LLM 생성 없음, 규칙·휴리스틱 기반).
 - **변환 방식 `자동`**: CMP·파트너 덱 → academy-design **§7** (도형 이식), Google 이미지 export → **§5** spec + 배경 이미지
 - **2단계 마법사**: `POST /wizard/preview` → 프로필 선택 → `POST /academize`
 - **품질 모드**: 표준(기본 최대 **40**장) / 대용량 — `PPT_ACADEMIZER_MAX_SLIDES_STANDARD` · 업로드 기본 **50**MB — `PPT_ACADEMIZER_MAX_UPLOAD_MB`
 - **분석만**: `POST /analyze` — 슬라이드별 `layout`·`texts` 미리보기
 
 `GET /health` — `engine_root`, `template_configured`, 버전 확인.
+
+## Netlify 배포
+
+UI는 Netlify, 변환 API는 Python 호스트(Render 등)에 두는 구성입니다.  
+→ [docs/DEPLOY-NETLIFY.md](docs/DEPLOY-NETLIFY.md) (팀: [cxr542 Netlify](https://app.netlify.com/teams/cxr542/projects))
 
 ## 엔진 (ppt-test 독립)
 

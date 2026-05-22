@@ -1,0 +1,16 @@
+# Netlify: static web UI (+ optional API proxy via build env PPT_ACADEMIZER_API_URL)
+# Full .pptx conversion requires a Python API elsewhere — see docs/DEPLOY-NETLIFY.md
+
+[build]
+  command = "bash scripts/netlify_prepare.sh"
+  publish = "web"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "SAMEORIGIN"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"

@@ -15,6 +15,13 @@ from scripts.pptx_ingest import is_image_only_slide, slide_text_blocks
 
 Profile = str  # "spec" | "migrate_cmp" | "google_image"
 
+_AI_FILENAME_RE = re.compile(
+    r"chatgpt|openai|gpt[-_]?4|gemini|google\s*ai|copilot|claude|anthropic|"
+    r"gamma\.?app|slidesai|slide\.ai|beautiful\.ai|tome\.app|"
+    r"ai[-_ ]?(deck|ppt|slide|export|generated)|generated[-_ ]?by",
+    re.I,
+)
+
 
 @dataclass(frozen=True)
 class DeckStructure:
@@ -122,6 +129,31 @@ def is_partner_shape_heavy(st: DeckStructure) -> bool:
     return False
 
 
+def ai_filename_hint(filename: str) -> bool:
+    return bool(_AI_FILENAME_RE.search(filename or ""))
+
+
+def is_ai_freeform_text_deck(st: DeckStructure) -> bool:
+    """ChatGPT/Copilot-style: blank slides + text boxes, few diagrams."""
+    if st.slide_count < 2 or st.slide_count > 80:
+        return False
+    if st.google_image_ratio >= 0.35:
+        return False
+    if st.chart_count or st.table_count:
+        return False
+    if st.shapes_per_slide > 7.0:
+        return False
+    if st.text_slide_ratio < 0.8:
+        return False
+    if st.avg_text_blocks < 1.0:
+        return False
+    if st.total_text_blocks < max(2, int(st.slide_count * 0.9)):
+        return False
+    if st.shapes_per_slide >= 3.5:
+        return False
+    return True
+
+
 def is_text_lecture_deck(st: DeckStructure) -> bool:
     """Simple text / Google export — use §5 spec."""
     if st.google_image_ratio >= 0.4 and st.total_text_blocks <= st.slide_count:
@@ -171,6 +203,21 @@ def detect_deck_profile(
 
     if is_text_lecture_deck(st):
         return "spec", _structure_to_meta(st, {"reason": "text_lecture_structure"})
+
+    ai_hint = ai_filename_hint(name)
+    if is_ai_freeform_text_deck(st) or (
+        ai_hint
+        and st.text_slide_ratio >= 0.65
+        and st.google_image_ratio < 0.45
+        and st.shapes_per_slide < 3.5
+    ):
+        return "spec", _structure_to_meta(
+            st,
+            {
+                "reason": "ai_freeform_export",
+                "ai_filename_hint": ai_hint,
+            },
+        )
 
     if st.total_text_blocks >= max(3, st.slide_count // 2) and st.google_image_ratio < 0.85:
         if st.shapes_per_slide >= 3.0 and st.slide_count >= 8:

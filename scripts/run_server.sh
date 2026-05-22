@@ -34,4 +34,16 @@ fi
 
 export PYTHONPATH="$ENGINE:$ROOT${PYTHONPATH:+:$PYTHONPATH}"
 PORT="${PORT:-8765}"
-exec "$VENV/bin/python" -m uvicorn api.main:app --host 0.0.0.0 --port "$PORT" --reload --app-dir "$ROOT"
+
+# Server defaults: no Mac PowerPoint popup; bind localhost. Set PPT_ACADEMIZER_DEV=1 for --reload + 0.0.0.0
+export PPT_ACADEMIZER_SKIP_PP_REPAIR="${PPT_ACADEMIZER_SKIP_PP_REPAIR:-1}"
+
+HOST="127.0.0.1"
+if [ "${PPT_ACADEMIZER_DEV:-}" = "1" ]; then
+  HOST="0.0.0.0"
+  echo "Dev mode: reload on, host $HOST (set PPT_ACADEMIZER_DEV=0 for stable server)" >&2
+  exec "$VENV/bin/python" -m uvicorn api.main:app --host "$HOST" --port "$PORT" --reload --app-dir "$ROOT"
+fi
+
+echo "Server mode: PP repair skipped, host $HOST (PPT_ACADEMIZER_DEV=1 enables reload)" >&2
+exec "$VENV/bin/python" -m uvicorn api.main:app --host "$HOST" --port "$PORT" --app-dir "$ROOT"

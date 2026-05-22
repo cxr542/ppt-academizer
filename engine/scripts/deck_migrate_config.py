@@ -22,6 +22,12 @@ class DeckMigrateConfig:
 
 def detect_deck_kind(filename: str) -> DeckKind:
     name = filename.lower()
+    if re.search(
+        r"chatgpt|openai|gemini|copilot|claude|gamma\.?app|ai[-_ ]?(deck|ppt|export)",
+        name,
+        re.I,
+    ):
+        return "generic_partner"
     if re.search(r"contrabass|콘트라베이스", name, re.I):
         return "contrabass"
     if re.search(r"\bcmp\b|클라우드\s*구현", name, re.I):

@@ -2,6 +2,11 @@
 
 형식: [Keep a Changelog](https://keepachangelog.com/). 상세는 [releases/](releases/) 참고.
 
+## [1.6.5] - 2026-05-21
+
+Stability: 청크 업로드(413), API 임시 폴더 자동 삭제, 무거운 작업 `to_thread`, 서버 기본 `SKIP_PP_REPAIR`·`127.0.0.1`.  
+Quality: AI·자유 텍스트 덱 → spec 라우팅 강화, `_PLACEHOLDER_GEOM` 동시 요청 누수 방지.
+
 ## [1.6.4] - 2026-05-21
 
 UX: 웹·README에 **이미지는 아카데미 스타일로 변환하지 않음** 안내 문구 추가.
