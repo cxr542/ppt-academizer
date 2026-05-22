@@ -499,11 +499,16 @@
       const b = apiBase();
       return b ? b + path : path;
     }
+    function apiFetch(path, init) {
+      const headers = new Headers((init && init.headers) || {});
+      headers.set("bypass-tunnel-reminder", "true");
+      return fetch(apiUrl(path), { ...init, headers });
+    }
 
     async function loadServerLimits() {
       const banner = document.getElementById("apiBanner");
       try {
-        const res = await fetch(apiUrl("/health"));
+        const res = await apiFetch("/health");
         if (!res.ok) {
           banner.classList.remove("hidden");
           return;
@@ -666,7 +671,7 @@
       status.className = "";
       wizardBody.classList.add("hidden");
       try {
-        const res = await fetch(apiUrl("/wizard/preview"), { method: "POST", body: fd });
+        const res = await apiFetch("/wizard/preview", { method: "POST", body: fd });
         let data = await res.json();
         if (!res.ok) {
           const msg = typeof data.detail === "string" ? data.detail : (data.detail?.message || res.statusText);
@@ -772,7 +777,7 @@
       const est = estimatedOutputSlides();
       if (est != null) fd.append("estimated_output_slides", String(est));
       try {
-        const res = await fetch(apiUrl("/academize"), { method: "POST", body: fd });
+        const res = await apiFetch("/academize", { method: "POST", body: fd });
         if (!res.ok) {
           let msg = res.statusText;
           try {

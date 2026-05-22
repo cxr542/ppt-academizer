@@ -8,6 +8,22 @@
 [build.environment]
   NODE_VERSION = "20"
 
+[[edge_functions]]
+  function = "api-proxy"
+  path = "/health"
+
+[[edge_functions]]
+  function = "api-proxy"
+  path = "/wizard/preview"
+
+[[edge_functions]]
+  function = "api-proxy"
+  path = "/analyze"
+
+[[edge_functions]]
+  function = "api-proxy"
+  path = "/academize"
+
 [[headers]]
   for = "/*"
   [headers.values]
