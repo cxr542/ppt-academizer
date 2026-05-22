@@ -1,0 +1,10 @@
+[
+  {
+    "layout": "2_표지",
+    "texts": ["TEMPLATE_PPTX 테스트\n아카데미 2026"]
+  },
+  {
+    "layout": "목차",
+    "texts": ["1. JSON으로 슬라이드 구성\n2. build_academy_deck.py\n3. OOXML 검증"]
+  }
+]

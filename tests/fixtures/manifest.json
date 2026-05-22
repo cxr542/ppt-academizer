@@ -1,0 +1,37 @@
+{
+  "comment": "Run: python scripts/restore_fixtures.py from apps/ppt-academizer",
+  "sources": [
+    {
+      "id": "contrabass",
+      "target": "contrabass-partner.pptx",
+      "paths": [
+        "~/Desktop/_삭제가능/바탕화면-잔여-PPTX/CONTRABASS 기반기술@260504_수정 요청.pptx",
+        "~/Downloads/CONTRABASS 기반기술@260504_수정 요청.pptx"
+      ]
+    },
+    {
+      "id": "cmp",
+      "target": "cmp-partner.pptx",
+      "paths": [
+        "~/Desktop/_삭제가능/바탕화면-잔여-PPTX/클라우드 구현기술(CMP)_v1.0_수정요청.pptx",
+        "~/Desktop/클라우드 구현기술(CMP)_v1.0_수정요청.pptx"
+      ]
+    },
+    {
+      "id": "paas",
+      "target": "paas-v16.pptx",
+      "paths": [
+        "~/Desktop/_삭제가능/바탕화면-잔여-PPTX/"
+      ],
+      "glob": "*PaaS*v16*.pptx"
+    },
+    {
+      "id": "contrabass-output-v10",
+      "target": "contrabass-academy-output-v1.0.pptx",
+      "paths": [
+        "~/Downloads/academy-output-con-0519.pptx"
+      ],
+      "optional": true
+    }
+  ]
+}

@@ -1,0 +1,782 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PPT 아카데미화</title>
+  <style>
+    :root {
+      --bg: #f4f6f9;
+      --card: #fff;
+      --accent: #006dff;
+      --accent-hover: #0056cc;
+      --border: #d8dee9;
+      --text: #1a1a2e;
+      --muted: #5c6578;
+      --ok: #0d7a3e;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Pretendard", "Apple SD Gothic Neo", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      padding: 2rem 1rem 3rem;
+    }
+    .wrap { max-width: 720px; margin: 0 auto; }
+    h1 { font-size: 1.5rem; font-weight: 700; margin: 0 0 0.25rem; }
+    .sub { color: var(--muted); font-size: 0.9rem; margin-bottom: 1.25rem; }
+    .steps {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 1.25rem;
+      font-size: 0.85rem;
+    }
+    .step {
+      flex: 1;
+      padding: 0.5rem 0.75rem;
+      border-radius: 8px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      text-align: center;
+    }
+    .step.active { border-color: var(--accent); color: var(--accent); font-weight: 600; background: #f8fbff; }
+    .step.done { color: var(--ok); border-color: #b8e6c8; }
+    .panel {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.25rem 1.5rem;
+      box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06);
+    }
+    .hidden { display: none !important; }
+    #drop {
+      border: 2px dashed var(--border);
+      border-radius: 10px;
+      padding: 2rem 1rem;
+      text-align: center;
+      cursor: pointer;
+    }
+    #drop.dragover { border-color: var(--accent); background: #eef4ff; }
+    #drop.has-file { border-style: solid; border-color: var(--accent); background: #f8fbff; }
+    #fileName { font-weight: 600; color: var(--accent); word-break: break-all; margin-top: 0.5rem; }
+    input[type="file"] { display: none; }
+    .structure {
+      margin-top: 1rem;
+      padding: 0.75rem 1rem;
+      background: #f8fafc;
+      border-radius: 8px;
+      font-size: 0.82rem;
+      color: var(--muted);
+    }
+    .structure ul { margin: 0.35rem 0 0; padding-left: 1.2rem; }
+    .cards {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.75rem;
+      margin-top: 1rem;
+    }
+    @media (max-width: 560px) { .cards { grid-template-columns: 1fr; } }
+    .profile-card {
+      border: 2px solid var(--border);
+      border-radius: 10px;
+      padding: 1rem;
+      cursor: pointer;
+      transition: border-color 0.15s, box-shadow 0.15s;
+      position: relative;
+    }
+    .profile-card:hover { border-color: #a8c4f0; }
+    .profile-card.selected { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(0, 109, 255, 0.15); }
+    .profile-card h3 { margin: 0 0 0.25rem; font-size: 1rem; }
+    .profile-card .pid { font-size: 0.75rem; color: var(--muted); }
+    .profile-card p.desc { margin: 0.5rem 0 0; font-size: 0.82rem; color: var(--muted); line-height: 1.45; }
+    .profile-card.disabled { opacity: 0.55; cursor: not-allowed; pointer-events: none; }
+    .quality-section { margin-top: 1rem; }
+    .quality-section h4 { margin: 0 0 0.5rem; font-size: 0.9rem; }
+    .disclaimer {
+      margin-top: 0.75rem;
+      padding: 0.65rem 0.85rem;
+      background: #fff8e6;
+      border-radius: 8px;
+      font-size: 0.8rem;
+      color: #6b5a20;
+      line-height: 1.45;
+    }
+    .about-box {
+      margin: 0 0 1.25rem;
+      padding: 1rem 1.1rem;
+      background: #f8fbff;
+      border: 1px solid #d8e6f5;
+      border-radius: 10px;
+      font-size: 0.85rem;
+      color: #3d4f66;
+      line-height: 1.55;
+    }
+    .about-box h2 {
+      margin: 0 0 0.5rem;
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: var(--text);
+    }
+    .about-box ul {
+      margin: 0;
+      padding-left: 1.15rem;
+    }
+    .about-box li { margin: 0.2rem 0; }
+    .about-box .caveat {
+      margin: 0.65rem 0 0;
+      padding-top: 0.6rem;
+      border-top: 1px solid #e2ecf8;
+      font-size: 0.82rem;
+      color: #5c6578;
+    }
+    .about-box .caveat strong { color: var(--text); font-weight: 700; }
+    .badge {
+      position: absolute;
+      top: 0.6rem;
+      right: 0.6rem;
+      font-size: 0.7rem;
+      font-weight: 600;
+      padding: 0.15rem 0.45rem;
+      border-radius: 4px;
+      background: #e8f4ec;
+      color: var(--ok);
+    }
+    .preview-box {
+      margin-top: 1rem;
+      padding: 1rem;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: #fafbfc;
+    }
+    .preview-box h4 { margin: 0 0 0.5rem; font-size: 0.9rem; }
+    .preview-box ul.summary { margin: 0 0 0.75rem; padding-left: 1.2rem; font-size: 0.82rem; color: var(--muted); }
+    .slide-row {
+      font-size: 0.8rem;
+      padding: 0.5rem 0;
+      border-top: 1px solid var(--border);
+    }
+    .slide-row:first-of-type { border-top: none; }
+    .slide-row strong { color: var(--text); }
+    .slide-row .lines { color: var(--muted); margin-top: 0.2rem; }
+    .actions { display: flex; gap: 0.5rem; margin-top: 1.25rem; }
+    button.primary {
+      flex: 1;
+      padding: 0.85rem;
+      font-size: 1rem;
+      font-weight: 600;
+      color: #fff;
+      background: var(--accent);
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+    button.primary:disabled { background: #a8c4f0; cursor: not-allowed; }
+    button.primary:not(:disabled):hover { background: var(--accent-hover); }
+    button.secondary {
+      padding: 0.85rem 1rem;
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      cursor: pointer;
+    }
+    #status { margin-top: 1rem; font-size: 0.85rem; color: var(--muted); min-height: 1.2em; }
+    #status.error { color: #c0392b; }
+    #warnings {
+      margin-top: 0.75rem;
+      padding: 0.75rem;
+      background: #fff8e6;
+      border-radius: 8px;
+      font-size: 0.8rem;
+      display: none;
+    }
+    #warnings ul { margin: 0.25rem 0 0; padding-left: 1.2rem; }
+    .confirm-line {
+      margin-top: 1rem;
+      padding: 0.75rem 1rem;
+      background: #eef4ff;
+      border-radius: 8px;
+      font-size: 0.9rem;
+    }
+    .howto {
+      margin-top: 2rem;
+      padding: 1.25rem 1.1rem 1.1rem;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+    }
+    .howto h2 {
+      margin: 0 0 1rem;
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: var(--text);
+      text-align: center;
+    }
+    .flow {
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      gap: 0.35rem;
+      flex-wrap: wrap;
+    }
+    .flow-step {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      width: 5.5rem;
+      text-align: center;
+    }
+    .flow-icon {
+      width: 3.25rem;
+      height: 3.25rem;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.65rem;
+      font-weight: 700;
+      line-height: 1.1;
+      margin-bottom: 0.35rem;
+    }
+    .flow-icon.upload {
+      border: 2px dashed var(--accent);
+      background: #f8fbff;
+      color: var(--accent);
+    }
+    .flow-icon.pick {
+      background: #f4f6f9;
+      border: 1px solid var(--border);
+      gap: 0.15rem;
+      flex-direction: column;
+    }
+    .flow-icon.pick span {
+      display: block;
+      width: 1.6rem;
+      height: 0.45rem;
+      border-radius: 3px;
+      background: #d8dee9;
+    }
+    .flow-icon.pick span.on {
+      background: var(--accent);
+      box-shadow: 0 0 0 2px rgba(0, 109, 255, 0.2);
+    }
+    .flow-icon.run {
+      background: var(--accent);
+      color: #fff;
+      border-radius: 50%;
+      width: 2.75rem;
+      height: 2.75rem;
+      font-size: 1.1rem;
+    }
+    .flow-icon.out {
+      background: linear-gradient(135deg, #006dff 0%, #0056cc 100%);
+      color: #fff;
+      border: 2px solid #e8f0ff;
+    }
+    .flow-num {
+      font-size: 0.7rem;
+      font-weight: 700;
+      color: var(--accent);
+      margin-bottom: 0.15rem;
+    }
+    .flow-label {
+      font-size: 0.72rem;
+      color: var(--muted);
+      line-height: 1.3;
+    }
+    .flow-arrow {
+      color: #a8c4f0;
+      font-size: 1.25rem;
+      font-weight: 700;
+      padding-top: 1.1rem;
+      user-select: none;
+    }
+    .flow-io {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.75rem;
+      margin-top: 1.1rem;
+      padding-top: 1rem;
+      border-top: 1px dashed var(--border);
+    }
+    .io-box {
+      padding: 0.45rem 0.65rem;
+      border-radius: 6px;
+      font-size: 0.72rem;
+      font-weight: 600;
+    }
+    .io-box.src {
+      background: #f4f6f9;
+      border: 1px solid var(--border);
+      color: var(--muted);
+    }
+    .io-box.dst {
+      background: #eef4ff;
+      border: 1px solid #a8c4f0;
+      color: var(--accent);
+    }
+    .io-arrow {
+      font-size: 1.1rem;
+      color: var(--accent);
+      font-weight: 700;
+    }
+    @media (max-width: 520px) {
+      .flow { flex-direction: column; align-items: center; gap: 0.15rem; }
+      .flow-arrow { padding: 0; transform: rotate(90deg); }
+      .flow-step { width: auto; flex-direction: row; gap: 0.65rem; text-align: left; }
+      .flow-icon { margin-bottom: 0; flex-shrink: 0; }
+      .flow-num, .flow-label { margin: 0; }
+      .flow-meta { display: flex; flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>PPT 아카데미화</h1>
+    <p class="sub" id="limits-hint">PowerPoint(.pptx) → OKESTRO 아카데미 강의안 변환 · 한도 확인 중…</p>
+    <aside class="about-box" id="aboutService" aria-label="서비스 안내">
+      <h2>PPT 아카데미화란?</h2>
+      <ul>
+        <li>일반·AI로 만든 <strong>.pptx</strong>를 OKESTRO <strong>아카데미 강의안</strong> 템플릿·레이아웃으로 맞춥니다.</li>
+        <li><strong>텍스트</strong>와 <strong>슬라이드 구성</strong>(표지·목차·본문 등)을 변환합니다.</li>
+      </ul>
+      <p class="caveat"><strong>단, 이미지는 변환하지 않습니다.</strong> 사진·차트 등은 가능한 범위에서 원본을 옮기며, 아카데미 스타일로 새로 그리지 않습니다.</p>
+    </aside>
+
+    <div class="steps">
+      <div class="step active" id="stepLabel1">1. 덱 유형 확인</div>
+      <div class="step" id="stepLabel2">2. 아카데미화</div>
+    </div>
+
+    <!-- Step 1 -->
+    <section class="panel" id="panel1">
+      <div id="drop" role="button" tabindex="0">
+        <p>여기에 <strong>.pptx</strong>를 놓거나 클릭</p>
+        <p id="fileName" class="hidden"></p>
+      </div>
+      <input type="file" id="fileInput" accept=".pptx,application/vnd.openxmlformats-officedocument.presentationml.presentation" />
+
+      <div id="wizardBody" class="hidden">
+        <div class="structure" id="structureBox">
+          <strong>원본 구조</strong>
+          <ul id="structureList"></ul>
+        </div>
+        <p style="font-size:0.85rem;color:var(--muted);margin:1rem 0 0;">
+          변환 방식을 선택하면 아래에 <strong>이 방식으로 변환될 때</strong>의 예상 결과가 표시됩니다.
+        </p>
+        <div class="cards" id="profileCards"></div>
+        <div class="preview-box hidden" id="previewBox">
+          <h4 id="previewTitle">미리보기</h4>
+          <ul class="summary" id="previewSummary"></ul>
+          <div id="previewSlides"></div>
+        </div>
+        <div class="actions">
+          <button type="button" class="primary" id="btnNext" disabled>다음 — 아카데미화</button>
+        </div>
+      </div>
+      <div id="status"></div>
+    </section>
+
+    <!-- Step 2 -->
+    <section class="panel hidden" id="panel2">
+      <div class="confirm-line" id="confirmLine"></div>
+      <div class="quality-section" id="qualitySection">
+        <h4>품질 모드</h4>
+        <div class="cards" id="qualityCards"></div>
+        <div class="disclaimer hidden" id="qualityDisclaimer"></div>
+      </div>
+      <div class="actions">
+        <button type="button" class="secondary" id="btnBack">이전</button>
+        <button type="button" class="primary" id="btnGo">아카데미화 실행</button>
+      </div>
+      <div id="status2"></div>
+      <div id="warnings"><strong>참고</strong><ul id="warnList"></ul></div>
+    </section>
+
+    <section class="howto" aria-label="사용 방법">
+      <h2>사용 방법</h2>
+      <div class="flow">
+        <div class="flow-step">
+          <div class="flow-icon upload">pptx</div>
+          <div class="flow-meta">
+            <span class="flow-num">①</span>
+            <span class="flow-label">올리기</span>
+          </div>
+        </div>
+        <span class="flow-arrow" aria-hidden="true">›</span>
+        <div class="flow-step">
+          <div class="flow-icon pick"><span></span><span class="on"></span></div>
+          <div class="flow-meta">
+            <span class="flow-num">②</span>
+            <span class="flow-label">방식 선택</span>
+          </div>
+        </div>
+        <span class="flow-arrow" aria-hidden="true">›</span>
+        <div class="flow-step">
+          <div class="flow-icon run" aria-hidden="true">▶</div>
+          <div class="flow-meta">
+            <span class="flow-num">③</span>
+            <span class="flow-label">실행</span>
+          </div>
+        </div>
+        <span class="flow-arrow" aria-hidden="true">›</span>
+        <div class="flow-step">
+          <div class="flow-icon out">↓</div>
+          <div class="flow-meta">
+            <span class="flow-num">④</span>
+            <span class="flow-label">다운로드</span>
+          </div>
+        </div>
+      </div>
+      <div class="flow-io">
+        <span class="io-box src">원본 .pptx</span>
+        <span class="io-arrow" aria-hidden="true">→</span>
+        <span class="io-box dst">아카데미 .pptx</span>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    const drop = document.getElementById("drop");
+    const fileInput = document.getElementById("fileInput");
+    const fileName = document.getElementById("fileName");
+    const wizardBody = document.getElementById("wizardBody");
+    const structureList = document.getElementById("structureList");
+    const profileCards = document.getElementById("profileCards");
+    const previewBox = document.getElementById("previewBox");
+    const previewTitle = document.getElementById("previewTitle");
+    const previewSummary = document.getElementById("previewSummary");
+    const previewSlides = document.getElementById("previewSlides");
+    const btnNext = document.getElementById("btnNext");
+    const btnBack = document.getElementById("btnBack");
+    const btnGo = document.getElementById("btnGo");
+    const panel1 = document.getElementById("panel1");
+    const panel2 = document.getElementById("panel2");
+    const stepLabel1 = document.getElementById("stepLabel1");
+    const stepLabel2 = document.getElementById("stepLabel2");
+    const status = document.getElementById("status");
+    const status2 = document.getElementById("status2");
+    const confirmLine = document.getElementById("confirmLine");
+    const warnings = document.getElementById("warnings");
+    const warnList = document.getElementById("warnList");
+
+    let selectedFile = null;
+    let wizardData = null;
+    let selectedProfile = null;
+
+
+    let selectedQualityMode = "standard";
+    const qualityCards = document.getElementById("qualityCards");
+    const qualityDisclaimer = document.getElementById("qualityDisclaimer");
+    const limitsHint = document.getElementById("limits-hint");
+    let serverLimits = { maxUploadMb: 50, standardMaxSlides: 40 };
+
+    async function loadServerLimits() {
+      try {
+        const res = await fetch("/health");
+        if (!res.ok) return;
+        const h = await res.json();
+        serverLimits.maxUploadMb = h.max_upload_mb ?? serverLimits.maxUploadMb;
+        serverLimits.standardMaxSlides = h.standard_max_slides ?? serverLimits.standardMaxSlides;
+        limitsHint.textContent =
+          "PowerPoint(.pptx) → OKESTRO 아카데미 강의안 · 업로드 " +
+          serverLimits.maxUploadMb + "MB · 표준 모드 권장 " + serverLimits.standardMaxSlides + "장 이하";
+      } catch (_) {
+        limitsHint.textContent =
+          "PowerPoint(.pptx) → OKESTRO 아카데미 강의안 · 업로드 " +
+          serverLimits.maxUploadMb + "MB · 표준 모드 권장 " + serverLimits.standardMaxSlides + "장 이하";
+      }
+    }
+    loadServerLimits();
+
+    function estimatedOutputSlides() {
+      if (!wizardData || !selectedProfile) return null;
+      const card = (wizardData.cards || []).find((c) => c.id === selectedProfile);
+      return card?.preview?.output_slide_count ?? null;
+    }
+
+    function buildQualityModes() {
+      qualityCards.innerHTML = "";
+      const lim = wizardData?.slide_limits;
+      if (!lim) return;
+      selectedQualityMode = lim.default_quality_mode || "standard";
+      (lim.quality_modes || []).forEach((mode) => {
+        const el = document.createElement("div");
+        el.className = "profile-card" + (mode.id === selectedQualityMode ? " selected" : "");
+        if (!mode.available) el.classList.add("disabled");
+        el.dataset.id = mode.id;
+        el.innerHTML =
+          "<h3>" + mode.title + "</h3><div class='pid'>" + mode.id + "</div>" +
+          "<p class='desc'>" + mode.description + "</p>";
+        el.addEventListener("click", () => {
+          if (!mode.available) return;
+          selectQualityMode(mode.id);
+        });
+        qualityCards.appendChild(el);
+      });
+      updateQualityDisclaimer();
+    }
+
+    function selectQualityMode(modeId) {
+      selectedQualityMode = modeId;
+      document.querySelectorAll("#qualityCards .profile-card").forEach((el) => {
+        el.classList.toggle("selected", el.dataset.id === modeId);
+      });
+      updateQualityDisclaimer();
+    }
+
+    function updateQualityDisclaimer() {
+      const lim = wizardData?.slide_limits;
+      const mode = (lim?.quality_modes || []).find((m) => m.id === selectedQualityMode);
+      if (mode && mode.disclaimer && selectedQualityMode === "unlimited") {
+        qualityDisclaimer.textContent = mode.disclaimer;
+        qualityDisclaimer.classList.remove("hidden");
+      } else {
+        qualityDisclaimer.classList.add("hidden");
+        qualityDisclaimer.textContent = "";
+      }
+    }
+
+
+    function decodeWarningsHeader(b64) {
+      const bin = atob(b64);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      return JSON.parse(new TextDecoder("utf-8").decode(bytes));
+    }
+
+    function appendWarningItem(w) {
+      const li = document.createElement("li");
+      const slide = w.slide ? "원본 " + w.slide + "장 — " : "";
+      li.textContent = slide + (w.message || "");
+      warnList.appendChild(li);
+    }
+
+    function renderPreview(card) {
+      if (!card || !card.preview) return;
+      previewBox.classList.remove("hidden");
+      previewBox.querySelectorAll(".preview-note").forEach((n) => n.remove());
+      previewTitle.textContent = card.title + " — 예상 결과";
+      previewSummary.innerHTML = "";
+      (card.preview.summary || []).forEach((line) => {
+        const li = document.createElement("li");
+        li.textContent = line;
+        previewSummary.appendChild(li);
+      });
+      previewSlides.innerHTML = "";
+      const slides = card.preview.slides || [];
+      slides.forEach((s) => {
+        const div = document.createElement("div");
+        div.className = "slide-row";
+        let head = "";
+        if (s.out_slide != null) {
+          head = "<strong>출력 " + s.out_slide + "장</strong> · " + (s.layout || "");
+          if (s.layout_reason) head += " (" + s.layout_reason + ")";
+        } else if (s.src_slide != null) {
+          head = "<strong>원본 " + s.src_slide + "장</strong> → " + (s.layout_hint || s.plan_kind || "");
+        }
+        const lines = (s.lines || []).join(" · ");
+        div.innerHTML = head + (lines ? '<div class="lines">' + lines + "</div>" : "");
+        previewSlides.appendChild(div);
+      });
+      if (card.note) {
+        const note = document.createElement("p");
+        note.className = "preview-note";
+        note.style.cssText = "font-size:0.8rem;color:var(--ok);margin:0.5rem 0 0;";
+        note.textContent = card.note;
+        previewBox.appendChild(note);
+      }
+    }
+
+    function selectCard(cardId) {
+      selectedProfile = cardId;
+      document.querySelectorAll(".profile-card").forEach((el) => {
+        el.classList.toggle("selected", el.dataset.id === cardId);
+      });
+      const card = (wizardData.cards || []).find((c) => c.id === cardId);
+      renderPreview(card);
+      btnNext.disabled = false;
+    }
+
+    function buildCards(data) {
+      profileCards.innerHTML = "";
+      (data.cards || []).forEach((card) => {
+        const el = document.createElement("div");
+        el.className = "profile-card" + (card.recommended ? " selected" : "");
+        el.dataset.id = card.id;
+        el.innerHTML =
+          "<h3>" + card.title + "</h3><div class='pid'>" + card.subtitle + "</div>" +
+          "<p class='desc'>" + card.description + "</p>";
+        if (card.recommended) {
+          const b = document.createElement("span");
+          b.className = "badge";
+          b.textContent = "추천";
+          el.appendChild(b);
+        }
+        el.addEventListener("click", () => selectCard(card.id));
+        profileCards.appendChild(el);
+      });
+      selectedProfile = data.recommended_profile || "spec";
+      selectCard(selectedProfile);
+    }
+
+    async function loadWizardFromFormData(fd) {
+      status.textContent = "덱 분석 중…";
+      status.className = "";
+      wizardBody.classList.add("hidden");
+      try {
+        const res = await fetch("/wizard/preview", { method: "POST", body: fd });
+        let data = await res.json();
+        if (!res.ok) {
+          const msg = typeof data.detail === "string" ? data.detail : (data.detail?.message || res.statusText);
+          throw new Error(msg);
+        }
+        wizardData = data;
+        structureList.innerHTML = "";
+        (data.structure_bullets || []).forEach((line) => {
+          const li = document.createElement("li");
+          li.textContent = line;
+          structureList.appendChild(li);
+        });
+        buildCards(data);
+        wizardBody.classList.remove("hidden");
+        const lim = data.slide_limits || {};
+        let st = "자동 감지: " + data.detected_profile + " → 추천 " + data.recommended_profile;
+        if (lim.source_slide_count != null) {
+          st += " · 원본 " + lim.source_slide_count + "장";
+          if (lim.over_standard_limit) st += " (표준 한도 " + lim.standard_max_slides + "장 초과 → 대용량 모드)";
+        }
+        status.textContent = st;
+      } catch (err) {
+        status.textContent = err.message || String(err);
+        status.className = "error";
+      }
+    }
+
+    async function loadWizard(file) {
+      const fd = new FormData();
+      fd.append("file", file);
+      await loadWizardFromFormData(fd);
+    }
+
+
+    function setFile(file) {
+      if (!file) return;
+      const name = file.name.toLowerCase();
+      if (!name.endsWith(".pptx")) {
+        status.textContent = ".pptx 파일만 업로드할 수 있습니다.";
+        status.className = "error";
+        return;
+      }
+      const maxBytes = serverLimits.maxUploadMb * 1024 * 1024;
+      if (file.size > maxBytes) {
+        status.textContent = "파일이 너무 큽니다. " + serverLimits.maxUploadMb + "MB 이하로 올려 주세요.";
+        status.className = "error";
+        return;
+      }
+      selectedFile = file;
+      fileName.textContent = file.name;
+      fileName.classList.remove("hidden");
+      drop.classList.add("has-file");
+      loadWizard(file);
+    }
+
+    drop.addEventListener("click", () => fileInput.click());
+    drop.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fileInput.click(); }
+    });
+    fileInput.addEventListener("change", () => { if (fileInput.files[0]) setFile(fileInput.files[0]); });
+    ["dragenter", "dragover"].forEach((ev) => {
+      drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add("dragover"); });
+    });
+    ["dragleave", "drop"].forEach((ev) => {
+      drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove("dragover"); });
+    });
+    drop.addEventListener("drop", (e) => { const f = e.dataTransfer.files[0]; if (f) setFile(f); });
+
+    btnNext.addEventListener("click", () => {
+      if (!selectedProfile) return;
+      const card = (wizardData.cards || []).find((c) => c.id === selectedProfile);
+      panel1.classList.add("hidden");
+      panel2.classList.remove("hidden");
+      stepLabel1.classList.remove("active");
+      stepLabel1.classList.add("done");
+      stepLabel2.classList.add("active");
+      confirmLine.innerHTML =
+        "<strong>" + (card ? card.title : selectedProfile) + "</strong>으로 변환합니다. " +
+        "예상 약 <strong>" + (card?.preview?.output_slide_count || "?") + "장</strong>.";
+      status2.textContent = "";
+      warnings.style.display = "none";
+      warnList.innerHTML = "";
+      buildQualityModes();
+    });
+
+    btnBack.addEventListener("click", () => {
+      panel2.classList.add("hidden");
+      panel1.classList.remove("hidden");
+      stepLabel2.classList.remove("active");
+      stepLabel1.classList.add("active");
+      stepLabel1.classList.remove("done");
+    });
+
+    btnGo.addEventListener("click", async () => {
+      if (!selectedProfile) return;
+      if (!selectedFile) return;
+      btnGo.disabled = true;
+      status2.textContent = "변환 중… (시간이 걸릴 수 있습니다)";
+      const fd = new FormData();
+      fd.append("file", selectedFile);
+      fd.append("profile", selectedProfile);
+      fd.append("quality_mode", selectedQualityMode);
+      const est = estimatedOutputSlides();
+      if (est != null) fd.append("estimated_output_slides", String(est));
+      try {
+        const res = await fetch("/academize", { method: "POST", body: fd });
+        if (!res.ok) {
+          let msg = res.statusText;
+          try {
+            const j = await res.json();
+            msg = typeof j.detail === "string" ? j.detail : (j.detail?.message || msg);
+          } catch (_) {}
+          throw new Error(msg);
+        }
+        const warnB64 = res.headers.get("X-Academize-Warnings");
+        if (warnB64) {
+          try {
+            const meta = decodeWarningsHeader(warnB64);
+            if (meta.warnings && meta.warnings.length) {
+              warnings.style.display = "block";
+              meta.warnings.forEach(appendWarningItem);
+            }
+            status2.textContent = "완료 (" + (meta.slide_count || "") + "장) — 다운로드합니다.";
+          } catch (_) {
+            status2.textContent = "완료 — 다운로드합니다.";
+          }
+        } else {
+          status2.textContent = "완료 — 다운로드합니다.";
+        }
+        const blob = await res.blob();
+        const disp = res.headers.get("Content-Disposition") || "";
+        let outName = "academy-output.pptx";
+        const m = /filename="?([^";]+)"?/.exec(disp);
+        if (m) outName = m[1];
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = outName;
+        a.click();
+        URL.revokeObjectURL(url);
+      } catch (err) {
+        status2.textContent = err.message || String(err);
+        status2.className = "error";
+      } finally {
+        btnGo.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

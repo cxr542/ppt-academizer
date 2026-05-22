@@ -1,0 +1,9 @@
+python-pptx>=1.0.0
+Pillow>=10.0.0
+# ppt-test OOXML repair (engine/office/validators — bundled via sync_engine_from_ppt_test.py)
+defusedxml>=0.7.1
+lxml>=5.0.0
+fastapi>=0.115.0
+uvicorn>=0.32.0
+python-multipart>=0.0.12
+pytest>=8.0.0

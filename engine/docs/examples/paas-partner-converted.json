@@ -1,0 +1,386 @@
+[
+  {
+    "layout": "2_표지",
+    "texts": [
+      "[파트너사] 02. 클라우드 구현기술(PaaS)\n클라우드 구현기술 실습"
+    ]
+  },
+  {
+    "layout": "목차",
+    "texts": [
+      "1. 컨테이너 실습 (Docker)\n2. Kubernetes 실습 (K8s)\n3. 실습 시나리오·CLI/GUI 따라하기"
+    ]
+  },
+  {
+    "layout": "간지",
+    "texts": [
+      "컨테이너 실습",
+      "1."
+    ]
+  },
+  {
+    "layout": "내지_거버닝 O",
+    "texts": [
+      "도커를 활용하여 CLI or GUI(Docker Desktop)으로 NginX 컨테이너 생성",
+      "실습 시나리오",
+      "https://f5b40b67e6e8-10-244-3-190-80.spca.r.killercoda.com/\n\n서비스 확인\n\nCLI\n(Web 페이지 접속)\n\nDocker run\n\n이미지 다운로드\n\nDocker\nHub\n\n도커 컨테이너 생성\n\nGUI\n(Docker Desktop 설치)"
+    ]
+  },
+  {
+    "layout": "내지_거버닝 O",
+    "texts": [
+      "도커를 활용하여 CLI or GUI(Docker Desktop)으로 NginX 컨테이너 생성",
+      "실습 시나리오",
+      "웹 브라우저\n\n1. Killercoda를 통한 nginx 서비스 배포 (CLI)\nhttps://killercoda.com/docker/scenario/container-build  접속\n2)Cli 명령어 입력을 통해 nginx 컨테이너 생성\n3) 생성된 nginx 서비스 확인\n\nhttps://killercoda.com/docker/scenario/container-build\n\n모든 과정이 웹 브라우저를 통해 이루어 지며, nginx 서비스 화면을 확인할 수 있다.\n\nDocker Desktop\n\n2. Docker Desktop을 통한 nginx 서비스 배포 (GUI)\n1) Docker Desktop 설치\n2) Docker Desktop 에서 설치 이미지(nginx) 선택 및 다운로드\n3) 컨테이너 옵션 설정 및 실행\n4) 생성된 nginx 서비스 확인\n\nPC에 Docker Desktop을 설치하고, 이 프로그램 안에서 컨테이너 이미지를 다운로드 받고, 클릭하여 nginx 서비스를 올린다."
+    ]
+  },
+  {
+    "layout": "내지_거버닝 O",
+    "texts": [
+      "1. 계정 생성\n    hub.docker.com에 접속하여 계정을 만들어 주세요.\n\n2. 설치파일 다운로드\n    윈도우용\n    https://docs.docker.com/desktop/install/windows-install/\n\n    맥북용\n    https://www.docker.com/products/docker-desktop",
+      "사전 준비",
+      " "
+    ]
+  },
+  {
+    "layout": "내지_거버닝 O",
+    "texts": [
+      "특징\n공짜! 60분 무료 사용\n별도의 설치 없이 브라우저에서 실행\n여러 개의 컨네이너 실행 가능\n간단한 명령어 확인 및 테스트 가능\n내용이 저장되지 않기 때문에 연속되는 테스트 제한",
+      "Killercoda’s Docker - 소개",
+      "https://killercoda.com/docker/scenario/container-build"
+    ]
+  },
+  {
+    "layout": "내지_거버닝 O",
+    "texts": [
+      "Docker 컨테이너를 생성 해 봅니다.\n$ docker run -d -p 80:80 --name my-nginx nginx\n$ docker ps",
+      "Killercoda’s Docker– 컨테이너 생성",
+      "테스트"
+    ]
+  },
+  {
+    "layout": "내지_거버닝 O",
+    "texts": [
+      "Nginx 서비스가 정상적으로 실행 중인지 확인하기 위해 우측 햄버거 버튼을 누르고 “Traffic / Ports” 버튼을 누릅니다.\n팝업창이 뜨면 포트번호 80을 선택하거나 입력합니다.\n확인 버튼을 누르면 새로운 nginx 창이 뜹니다.",
+      "Killercoda’s Docker– 컨테이너 생성",
+      "https://f5b40b67e6e8-10-244-3-190-80.spca.r.killercoda.com/"
+    ]
+  },
+  {
+    "layout": "내지_거버닝 O",
+    "texts": [
+      "Docker Desktop 설치",
+      "Docker Desktop – 설치",
+      "01. 설치 파일 다운로드\n\n맥북용\nhttps://www.docker.com/products/docker-desktop\n\nhttps://docs.docker.com/desktop/install/windows-install/\n\n02. 시스템 요구사항 확인\n\n윈도우용 Docker desktop은 WSL2 혹은 Hyper-V 기반으로 설치가 가능합니다.\n윈도우10 홈 에디션은 Hyper-V를 지원하지 않습니다.\n윈도우11 홈 에디션은 Hyper-V를 우회하여 설치 가능합니다.\n테스트 환경에서는 WSL2 기반으로 설치합니다."
+    ]
+  },
+  {
+    "layout": "내지_거버닝 O",
+    "texts": [
+      "Docker Desktop 설치",
+      "Docker Desktop – 설치 (계속)",
+      "03. 설치\n\n다운로드 받은 파일을 실행하여 설치합니다.\n\n04. 설치 완료 후 리부팅\n\n설치가 완료되면 Close and restart 버튼을 클릭해 시스템을 리부팅합니다.\n\n05. 서비스 약관 동의"
+    ]
+  },
+  {
+    "layout": "내지_거버닝 O",
+    "texts": [
+      "Docker Desktop 설치",
+      "Docker Desktop – 설치 (계속)",
+      "06. 설치 완료 단계\n\n“Use recommended setting”을 선택하고 Finish 버튼을 눌러 설치를 완료합니다.\n최초 실행 시 WSL 커널 업데이트 안내 창이 뜰 수도 있습니다.\n(테스트 PC는 이전에 WSL을 설치했기 때문에 안떴습니다.)\n만일, WSL2 커널 업데이트가 필요할 경우 아래 링크의 내용을 참고하여 WSL2 Linux 커널을 업데이트 합니다.\nhttps://learn.microsoft.com/ko-kr/windows/wsl/wsl2-kernel"
+    ]
+  },
+  {
+    "layout": "내지_거버닝 O",
+    "texts": [
+      "Docker Desktop 설치",
+      "Docker Desktop - 로그인",
+      "07. Sign in\n\n“Sign in” 버튼을 눌러 로그인 합니다."
+    ]
+  },
+  {
+    "layout": "내지_거버닝 O",
+    "texts": [
+      "Docker Desktop 설치",
+      "Docker Desktop – 로그인 (계속)",
+      "07. Sign in (계속)\n\n08. 설문 조사\n\n“Sign in” 버튼을 누르면 브라우저 창이 뜨고, 로그인을 진행하게 됩니다.\n테스트 환경에서는 이미 hub.docker.com에 로그인 되어 있는 상태이기 때문에 “Docker Desktop.ext 열기” 버튼을 누릅니다.\n\n적당히 설문조사를 진행합니다. Skip하고 넘어가도 됩니다."
+    ]
+  },
+  {
+    "layout": "내지_거버닝 O",
+    "texts": [
+      "Docker Desktop 설치",
+      "Docker Desktop – 확인",
+      "09. Docker Desktop 진입 완료"
+    ]
+  },
+  {
+    "layout": "내지_거버닝 O",
+    "texts": [
+      "설치된 도커 확인",
+      "Docker Desktop – 확인 (CLI)",
+      "10. 윈도우 파워쉘에서 설치된 도커 확인\n\n정상적으로 윈도우에 도커가 설치된 것을 확인할 수 있습니다.\n\n이제부터는 윈도우에서도 도커를 활용할 수 있습니다."
+    ]
+  },
+  {
+    "layout": "내지_거버닝 O",
+    "texts": [
+      "도커 데스크탑 상단에 위치한 검색창을 선택합니다.",
+      "Docker Desktop – 이미지 검색 (nginx)",
+      "여기서 원하는 이미지를 검색할 수 있는데,  테스트하고자 하는 이미지인 nginx를 적습니다.\n관련된 이미지가 검색되는데 처음에 나오는 것을 클릭합니다."
+    ]
+  },
+  {
+    "layout": "내지_거버닝 O",
+    "texts": [
+      "간단 사용법 – 이미지 다운로드 & 실행",
+      "Docker Desktop – 이미지 선택(Tag 이용)",
+      "이미지명을 선택하면 우측에 상세 정보를 확인할 수 있는 페이지가 뜨는데, 여기서 Tag 메뉴를 눌러 원하는 Tag(버전)을 선택합니다.\n단점이 있는데 웹페이지에서 검색했을 때 나오는 결과만큼 태그가 검색되지 않는 것으로 보입니다.\n“Run” 버튼을 누릅니다.\n\n컨테이너를 실행하기 위한 창이 뜹니다.\n풀다운 메뉴를 누릅니다.\n여기서 이 작업을 하지 않아도 됩니다."
+    ]
+  },
+  {
+    "layout": "내지_거버닝 O",
+    "texts": [
+      "이미지 탭으로 들어가 보면, 기존에 안보이던 nginx 컨테이너 이미지를 확인할 수 있습니다.\n해당 컨테이너 이미지는 아직 Unused 상태입니다.\nActions 버튼을 누릅니다.",
+      "Docker Desktop – 이미지 다운로드 확인 후 실행",
+      "아까 이미지를 다운로드 받은 후 곧바로 떳었던 컨테이너를 생성하는 창이 뜹니다.\n 컨테이너명과 포트번호를 입력하고, Run 버튼을 누릅니다."
+    ]
+  },
+  {
+    "layout": "내지_거버닝 O",
+    "texts": [
+      "간단 사용법 – 컨테이너 실행 상태 확인",
+      "Docker Desktop – Nginx 실행 확인",
+      "잠시 뒤에 컨테이너가 실행됩니다.\n실행 과정 중 “Windows 보안” 팝업 창이 뜹니다. 허용을 누릅니다.\n실행 직후에는 컨테이너 관련 상세 정보를 확인할 수 있는 페이지로 연결됩니다.\n캡처 화면은 운영 중인 컨테이너 목록 입니다.\n조금 전에 실행한 nginx가 Running으로 표시됩니다.\n노출한 포트 번호를 확인할 수 있는데, 바로 옆에 위치한 화살표 버튼을 누르면 웹브라우저를 통해 실행 중인 nginx 화면을 확인 할 수 있습니다. (다음 페이지)\n\n이미지 탭을 누르면 다운로드 받은 이미지가 사용 중으로 표시됩니다."
+    ]
+  },
+  {
+    "layout": "내지_거버닝 O",
+    "texts": [
+      "간단 사용법 – 생성한 컨테이너 동작 확인",
+      "Docker Desktop – Nginx 실행 화면 확인",
+      "웹브라우저를 통해 확인 시 Docker desktop을 통해 생성한 nginx 컨테이너가 정상적으로 서비스됨을 확인할 수 있습니다."
+    ]
+  },
+  {
+    "layout": "내지_거버닝 O",
+    "texts": [
+      "간단 사용법 – Docker Desktop 종료",
+      "Docker Desktop – 끄기",
+      "Docker desktop 프로그램을 종료하는 방법에는 여러 가지가 있습니다.\n프로그램 좌측 하단에 위치한 전원 버튼을 누릅니다.\n확인 후 종료합니다.\n\nDocker desktop 프로그램 좌측 하단에 위치한 점 3개 버튼을 누른 후 종료합니다.\n이때는 확인 메시지 없이 곧바로 종료됩니다."
+    ]
+  },
+  {
+    "layout": "내지_거버닝 O",
+    "texts": [
+      "Docker cli",
+      "Docker CLI – 기본 명령어",
+      "도커 엔진의 버전 확인\n\n컨테이너 생성\n\n컨테이너 내부에서 빠져나올 때\n\nexit를 입력하거나 Ctrl + D를 동시에 입력하여 컨테이너 내부에서 호스트의 도커 환경으로 되돌아올 수 있습니다.\n\n컨테이너 내부에서 빠져나오면서 동시에 컨테이너를 정지시키는 단점이 있습니다.\nCtrl + P + Q를 입력하여 정지시키지 않고 빠져나올 수 있습니다."
+    ]
+  },
+  {
+    "layout": "내지_거버닝 O",
+    "texts": [
+      "Docker cli",
+      "Docker CLI – 기본 명령어",
+      "도커 이미지 다운로드\n\n도커 이미지 목록 확인\n\n컨테이너 생성\n\n컨테이너 생성 상태 확인"
+    ]
+  },
+  {
+    "layout": "내지_거버닝 O",
+    "texts": [
+      "Docker cli",
+      "Docker CLI – 기본 명령어",
+      "도커 컨테이너 시작(실행)\n\n실행 중인 컨테이너 목록 확인\n\n컨테이너 내부로 진입 (터미널을 통한 접속)\n\n컨테이너 내부로 진입 (콘솔을 통한 접속)"
+    ]
+  },
+  {
+    "layout": "내지_거버닝 O",
+    "texts": [
+      "Docker cli – run과 create 명령어 차이",
+      "Docker CLI – 기본 명령어",
+      "docker run: 도커 이미지를 다운로드한 뒤에 컨테이너를 생성하고 생성된 컨테이너를 시작하고, 접속까지 진행합니다.\ndocker create: 도커 이미지를 다운로드한 뒤에 컨테이너를 생성까지만 합니다. 즉, 컨테이너를 시작하기 위해서는 별도의 명령(docker start)가 필요합니다."
+    ]
+  },
+  {
+    "layout": "내지_거버닝 O",
+    "texts": [
+      "Docker cli",
+      "Docker CLI – 기본 명령어",
+      "컨테이너 stop\n\n컨테이너 상태 확인\n\n생성된 컨테이너 삭제\n\n도커 이미지 확인"
+    ]
+  },
+  {
+    "layout": "내지_거버닝 O",
+    "texts": [
+      "Docker cli",
+      "Docker CLI – 기본 명령어",
+      "도커 이미지 삭제"
+    ]
+  },
+  {
+    "layout": "간지",
+    "texts": [
+      "K8s 실습",
+      "2."
+    ]
+  },
+  {
+    "layout": "내지_거버닝 O",
+    "texts": [
+      "K8s 클러스터 구성 후 Nginx 서비스 배포 실습 (CLI, GUI)​",
+      "실습 시나리오",
+      "웹 페이지 (Killercoda)\n\nKillercoda\u000b  페이지 접속\n\nKubernetes Cluster 구성\n\n워커 1\n\n마스터 1\n\nNginx\n\n웹 페이지 안에서 마스터 1대, 워커 1대로 이루어진\nK8s 클러스터 구성\n\nK8s 클러스터 안에서 Nginx 컨테이너 배포\n\nCurl을 통한 Nginx 서비스 확인\n\nDocker Desktop\n\nKubernetes Cluster enable\n\nGUI\n(Docker Desktop 설치)\n\n마스터 겸 워커 역할\n\n마스터 겸 워커 역할을 하는 노드 1개의 K8s 클러스터 구성\n\n웹 브라우저를 통한 Nginx 서비스 확인"
+    ]
+  },
+  {
+    "layout": "내지_거버닝 O",
+    "texts": [
+      "웹에서 제공하는 K8s 클러스터 구성 후 Nginx 서비스 배포 실습. Docker Desktop 안에서 K8s 클러스터 구성 후 Nginx 서비스 배포 실습.",
+      "실습 시나리오",
+      "1. 웹 브라우저 접속\n\n1. Killercoda’s k8s playground (자율 학습)\nhttps://killercoda.com/playgrounds/course/kubernetes-playgrounds/two-node 접속\n2) 명령어(kubectl)를 입력하여 node 구성 확인\n3) Control plane node에서 명령어(kubectl)를 입력하여 nginx 생성\n4) 명령어(kubectl)를 입력하여 pod 생성 확인\u000b5) Curl 명령어를 입력하여 nginx 서비스 상태 확인\n\nhttps://killercoda.com/playgrounds/course/kubernetes-playgrounds/two-node\n\n모든 과정이 웹 브라우저를 통해 이루어 지며, nginx 서비스 화면을 확인할 수 있다.\n\n2. Docker Desktop 내 K8s 클러스터 구성 후 nginx 서비스 배포\n1) Docker Desktop 설정에서 Kubernetes 활성화\n2) Yaml 파일을 통한 Nginx 서비스 배포\n3) 생성된 nginx 서비스 확인\n\nPC에 설치한 Docker Desktop에서\nKubernetes 클러스터를 활성화 하고,\n이 클러스터 안에서 nginx 서비스를\n띄운다."
+    ]
+  },
+  {
+    "layout": "내지_거버닝 O",
+    "texts": [
+      "특징\n공짜! 60분 무료 사용\n별도의 설치 없이 브라우저에서 실행\n여러 개의 노드 실행 가능\n(일반적으로 1 마스터, 1 워커 실습)\n간단한 명령어 확인 및 테스트 가능\n내용이 저장되지 않기 때문에 연속되는 테스트 제한",
+      "Killercoda’s K8s Playground – 소개",
+      "https://killercoda.com/playgrounds"
+    ]
+  },
+  {
+    "layout": "내지_거버닝 O",
+    "texts": [
+      "Two Node 선택 후 접속",
+      "Killercoda’s K8s Playground – Two Node 선택 후 접속",
+      "Two Node 선택\ncontrolplane node 입력 창이 뜸\n해당 입력 창에 k8s 명령어 입력하여 실습 진행"
+    ]
+  },
+  {
+    "layout": "내지_거버닝 O",
+    "texts": [
+      "Node 구성 확인",
+      "Killercoda’s K8s Playground – Node 구성 확인",
+      "# kubectl get nodes\n\n명령어를 입력하여 node 상태 확인\ncontrolplane : control-plane 역할\nnode01 : Worker node 역할"
+    ]
+  },
+  {
+    "layout": "내지_거버닝 O",
+    "texts": [
+      "Nginx 생성",
+      "Killercoda’s K8s Playground – Nginx 생성",
+      "# kubectl create deployment nginx-multi --image=nginx --replicas=2\n\n명령어를 입력하여 nginx 생성\nnginx-multi deployement 생성 확인"
+    ]
+  },
+  {
+    "layout": "내지_거버닝 O",
+    "texts": [
+      "Pod 생성 확인",
+      "Killercoda’s K8s Playground – Pod 생성 확인",
+      "# kubectl get pods -o wide\n\n명령어를 입력하여 Pod 생성 확인\n생성한 Pod 상태 확인"
+    ]
+  },
+  {
+    "layout": "내지_거버닝 O",
+    "texts": [
+      "Nginx 배포 확인",
+      "Killercoda’s K8s Playground – Nginx 배포 확인",
+      "# curl 192.168.1.201(Pod IP)\n\n명령어를 입력하여 Nginx 배포 확인\nPod IP를 활용하여 nginx 명령어가 잘 뜨는지 확인"
+    ]
+  },
+  {
+    "layout": "내지_거버닝 O",
+    "texts": [
+      "Deployment, Service 활용한 Nginx 배포",
+      "Killercoda’s K8s Playground – Nginx 배포",
+      "서비스 및 디플로이먼트 배포\n코드(nginx-infra.yaml)를 복사하여 명령어를 입력\n명령어를 입력하면 deployment, service 생성"
+    ]
+  },
+  {
+    "layout": "내지_거버닝 O",
+    "texts": [
+      "쿠버네티스가 자동으로 할당한 NodePort 확인",
+      "Killercoda’s K8s Playground – Nginx 배포",
+      "# kubectl get svc nginx-service\n\n노드포트 번호 확인"
+    ]
+  },
+  {
+    "layout": "내지_거버닝 O",
+    "texts": [
+      "Killercoda 내부 접속 테스트 (IP 확인 필요 없음)",
+      "Killercoda’s K8s Playground – Nginx 배포",
+      "예시 포트가 31542로 나왔을 경우\n# curl http://localhost:31542\n\nNginx의 Welcome HTML 코드가 화면에 출력"
+    ]
+  },
+  {
+    "layout": "내지_거버닝 O",
+    "texts": [
+      "Killercoda 내부 접속 테스트 (IP 확인 필요 없음)",
+      "Killercoda’s K8s Playground – Nginx 배포",
+      "Nginx 서비스가 정상적으로 실행 중인지 확인하기 위해 우측 햄버거 버튼을 누르고 “Traffic / Ports” 버튼을 누릅니다.\n팝업창이 뜨면 노트포트번호를 입력합니다.\n확인 버튼을 누르면 새로운 nginx 창이 뜹니다.\n\nhttps://f5b40b67e6e8-10-244-3-190-80.spca.r.killercoda.com/"
+    ]
+  },
+  {
+    "layout": "내지_거버닝 O",
+    "texts": [
+      "Docker Desktop에서 Kubernetes 활성화",
+      "Kubernetes with Docker Desktop – 도커 데스크톱을 활용한 K8s 실습",
+      "Docker Desktop을 실행합니다.\n톱니바퀴 아이콘을 눌러 설정 페이지로 들어갑니다.\n쿠버네티스 탭에서 관련 설정을 모두 체크 해 줍니다.\nApply & restart 버튼을 누릅니다.\n팝업창이 뜨고 install 버튼을 누르면 쿠버네티스 클러스터를 설치하게 됩니다.\n\n쿠버네티스 아이콘이 녹색으로 표시되면 설치가 완료된 것 입니다."
+    ]
+  },
+  {
+    "layout": "내지_거버닝 O",
+    "texts": [
+      "쿠버네티스 상태 확인",
+      "Kubernetes with Docker Desktop – K8s 클러스터 상태 확인",
+      "윈도우 파워쉘을 열고 쿠버네티스 배포 노드와 배포된 파드를 확인합니다."
+    ]
+  },
+  {
+    "layout": "내지_거버닝 O",
+    "texts": [
+      "Yaml 파일",
+      "Kubernetes with Docker Desktop – 서비스(Nginx) 배포 파일",
+      "deploy-nginx.yaml\n\nservice-nginx.yaml\n\napiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: my-nginx\nspec:\n  replicas: 1\n  selector:\n    matchLabels:\n      app: my-nginx\n  template:\n    metadata:\n      labels:\n        app: my-nginx\n    spec:\n      containers:\n        - name: nginx-nginx\n          image: nginx:1.25\n          ports:\n            - containerPort: 80\n\napiVersion: v1\nkind: Service\nmetadata:\n  name: my-nginx\nspec:\n  selector:\n    app: my-nginx\n  ports:\n    - protocol: TCP\n      nodePort: 31000\n      port: 80\n      targetPort: 80\n  type: NodePort"
+    ]
+  },
+  {
+    "layout": "내지_거버닝 O",
+    "texts": [
+      "Nginx 배포 및 확인",
+      "Kubernetes with Docker Desktop – Nginx 배포 및 확인",
+      "사전에 준비한 nginx 배포용 파일을 이용하여 nginx를 배포합니다. (설정 파일은 뒷 장 참고)\n\n배포된 nginx 파드를 확인합니다.\n\n서비스를 배포합니다. (설정 파일은 뒷 장 참고)\n\n배포된 서비스를 확인합니다."
+    ]
+  },
+  {
+    "layout": "내지_거버닝 O",
+    "texts": [
+      "Nginx 배포 및 확인",
+      "Kubernetes with Docker Desktop – 서비스(Nginx) 확인",
+      "브라우저를 사용하여 Nginx 서비스 상태를 확인합니다."
+    ]
+  },
+  {
+    "layout": "1_내지_거버닝 X",
+    "texts": [
+      "Kubernetes with Docker Desktop – K8s 기본 명령어",
+      "쿠버네티스 클러스터 노드 확인\n\n생성된 파드 확인\n\n파드에 대한 상세 정보 확인\n\n파드 로그 확인"
+    ]
+  },
+  {
+    "layout": "1_내지_거버닝 X",
+    "texts": [
+      "Kubernetes with Docker Desktop – K8s 기본 명령어",
+      "생성된 파드 삭제\n\n생성한 리소스(서비스) 삭제\n\n생성한 리소스(디플로이먼트) 삭제"
+    ]
+  },
+  {
+    "layout": "내지_거버닝 O",
+    "texts": [
+      "* 파드 정보는 kubectl get pod를 통해 확인 후 특정 파드를 복사하여 확인합니다.",
+      "Kubernetes with Docker Desktop – K8s 참고 명령어",
+      "생성된 스케일 아웃\n\n생성한 리소스(파드) 상세 정보 확인\n\n파드에 대한 로그 확인\n\nDeployment 편집"
+    ]
+  }
+]

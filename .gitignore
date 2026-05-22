@@ -1,0 +1,9 @@
+.DS_Store
+output/
+tests/fixtures/*.pptx
+!tests/fixtures/manifest.json
+.venv/
+assets-*/
+__pycache__/
+*.pyc
+.pytest_cache/
