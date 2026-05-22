@@ -1,13 +1,14 @@
 # ppt-academizer
 
+일반·AI로 만든 **.pptx**를 OKESTRO **아카데미 강의안** 템플릿·레이아웃으로 맞춥니다.
+
 PPT **아카데미화** 서비스 (계획: [PLAN.md](PLAN.md) · 독립 실행: [docs/standalone.md](docs/standalone.md)).
 
-**현재 릴리즈:** [1.6.0](releases/v1.6.0-RELEASE.md) · [CHANGELOG](CHANGELOG.md)
+**현재 릴리즈:** [1.6.4](CHANGELOG.md) · [CHANGELOG](CHANGELOG.md)
 
 ## 웹 UI
 
 ```bash
-cd apps/ppt-academizer
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 ./scripts/run_server.sh
 ```
@@ -27,7 +28,7 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 변환 로직은 **`engine/`** 에 번들되어 있습니다. monorepo의 `ppt-test` 없이도 동작합니다.
 
 ```bash
-# ppt-test에서 엔진을 갱신할 때만
+# ppt-test에서 엔진을 갱신할 때만 (monorepo 경로)
 python scripts/sync_engine_from_ppt_test.py
 ```
 
@@ -36,7 +37,6 @@ python scripts/sync_engine_from_ppt_test.py
 ## 스모크·테스트
 
 ```bash
-cd apps/ppt-academizer
 .venv/bin/pip install -r requirements.txt
 .venv/bin/python -m pytest tests/ -q
 .venv/bin/python scripts/run_smoke_tests.py
