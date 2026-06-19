@@ -21,6 +21,7 @@ ensure_engine_on_path()
 from pptx import Presentation  # noqa: E402
 
 from scripts.academy_deck_build_lib import (  # noqa: E402
+    apply_lab_code_block_shapes,
     apply_background_images,
     apply_lab_visual_shapes,
     build_from_json_specs,
@@ -74,6 +75,7 @@ def _save_specs_to_pptx(
     build_from_json_specs(prs, specs)
     apply_background_images(prs, specs)
     source_prs = Presentation(str(source))
+    apply_lab_code_block_shapes(prs, specs, source_prs)
     apply_lab_visual_shapes(prs, specs, source_prs)
     _apply_speaker_notes(prs, specs)
     if len(prs.slides) != len(specs):

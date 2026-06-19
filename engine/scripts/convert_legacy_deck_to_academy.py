@@ -240,6 +240,7 @@ def _attach_ingest_metadata(spec: dict, slide, slide_no: int, *, code_block: boo
         ing["speaker_notes"] = notes
     if code_block:
         ing["code_block"] = True
+        ing["code_block_shape_preservation"] = "source_text_boxes"
         ing["warning"] = "YAML/code block detected; verify indentation and wrapping."
     if _is_visual_heavy_slide(slide, code_block=code_block):
         ing["visual_preservation"] = "native_shapes"

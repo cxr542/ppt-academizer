@@ -35,11 +35,23 @@ LAB_GOVERNING_TOP = 720_000
 LAB_BODY_TOP = 1_250_000
 LAB_TITLE_HEIGHT = 300_000
 LAB_GOVERNING_HEIGHT = 380_000
+LAB_COLLAPSED_PLACEHOLDER_SIZE = 45_000
 TITLE_PT = 18
 CONTENT_TITLE_LAYOUTS = frozenset({"내지_거버닝 O", "1_내지_거버닝 X"})
 TITLE_PH10_MAX_CHARS = 72
 _MIN_BODY_PLACEHOLDER_W = int(Inches(2.0))
 _MIN_BODY_PLACEHOLDER_H = int(Inches(0.8))
+_CODE_BLOCK_TOKENS = (
+    "apiVersion:",
+    "kind:",
+    "metadata:",
+    "spec:",
+    "containers:",
+    "volumeMounts:",
+    "volumes:",
+    "ingressClassName:",
+    "index.html: |",
+)
 
 # Template slide-layout guide roles (see design.md / layout XML placeholders).
 #   표지 가이드     → 2_표지
@@ -523,6 +535,46 @@ def _is_lab_lecture_spec(spec: dict) -> bool:
     return (spec.get("_ingest") or {}).get("layout_profile") == "lab_lecture"
 
 
+def _is_lab_visual_preservation_spec(spec: dict) -> bool:
+    return (spec.get("_ingest") or {}).get("visual_preservation") == "native_shapes"
+
+
+def _collapse_lab_body_placeholders(slide) -> None:
+    prs = _presentation_for_slide(slide)
+    left = int(prs.slide_width) + SLIDE_MARGIN_X
+    top = int(prs.slide_height) + SLIDE_MARGIN_BOTTOM
+    body_indices = (12, 13) if slide.slide_layout.name == "내지_거버닝 O" else (12,)
+    for shape in slide.placeholders:
+        if shape.placeholder_format.idx not in body_indices:
+            continue
+        offset = LAB_COLLAPSED_PLACEHOLDER_SIZE if shape.placeholder_format.idx == 13 else 0
+        shape.text = ""
+        shape.left = left
+        shape.top = top + offset
+        shape.width = LAB_COLLAPSED_PLACEHOLDER_SIZE
+        shape.height = LAB_COLLAPSED_PLACEHOLDER_SIZE
+        shape.fill.background()
+        _set_shape_line_no_fill(shape)
+
+
+def _set_shape_line_no_fill(shape) -> None:
+    a_ns = "http://schemas.openxmlformats.org/drawingml/2006/main"
+    ln = shape._element.find(f".//{{{a_ns}}}ln")
+    if ln is None:
+        return
+    for child in list(ln):
+        if child.tag in (
+            f"{{{a_ns}}}noFill",
+            f"{{{a_ns}}}solidFill",
+            f"{{{a_ns}}}gradFill",
+            f"{{{a_ns}}}pattFill",
+            f"{{{a_ns}}}blipFill",
+        ):
+            ln.remove(child)
+    no_fill = shape._element.makeelement(f"{{{a_ns}}}noFill")
+    ln.insert(0, no_fill)
+
+
 def _apply_lab_body_typography(shape, *, body_font_pt: int) -> None:
     if not getattr(shape, "has_text_frame", False):
         return
@@ -550,6 +602,10 @@ def _apply_lab_lecture_content_layout(slide, spec: dict, *, body_font_pt: int) -
     ph10.width = min(sw - LAYOUT_PH10_LEFT - SLIDE_MARGIN_X, int(Inches(10.5)))
     ph10.height = max(int(ph10.height or 0), LAB_TITLE_HEIGHT)
 
+    if _is_lab_visual_preservation_spec(spec):
+        _collapse_lab_body_placeholders(slide)
+        return
+
     if slide.slide_layout.name == "내지_거버닝 O":
         ph12 = _ph_by_idx(slide, 12)
         ph12.left = BODY_AREA_LEFT
@@ -570,7 +626,12 @@ def _apply_lab_lecture_content_layout(slide, spec: dict, *, body_font_pt: int) -
     ph12.left = BODY_AREA_LEFT
     ph12.width = body_w
     ph12.height = max(sh - int(ph12.top or 0) - SLIDE_MARGIN_BOTTOM, _MIN_BODY_PLACEHOLDER_H)
-    if not (spec.get("_ingest") or {}).get("code_block"):
+    ingest = spec.get("_ingest") or {}
+    if ingest.get("code_block") and ingest.get("code_block_shape_preservation"):
+        ph12.top = LAB_GOVERNING_TOP
+        ph12.height = LAB_GOVERNING_HEIGHT
+        _apply_lab_body_typography(ph12, body_font_pt=14)
+    elif not ingest.get("code_block"):
         ph12.top = LAB_BODY_TOP
         ph12.height = body_h
         _apply_lab_body_typography(ph12, body_font_pt=max(14, body_font_pt - 1))
@@ -632,6 +693,91 @@ def _apply_code_block_text_style(slide) -> None:
             for run in para.runs:
                 run.font.name = "Courier New"
                 run.font.size = Pt(10)
+
+
+def _shape_text(shape) -> str:
+    if not getattr(shape, "has_text_frame", False):
+        return ""
+    return (shape.text or "").replace("\x0b", "\n").strip()
+
+
+def _is_lab_code_text(text: str) -> bool:
+    return any(token in text for token in _CODE_BLOCK_TOKENS)
+
+
+def _is_lab_footer_text(text: str) -> bool:
+    compact = " ".join(text.split())
+    if "|" not in compact:
+        return False
+    prefix, suffix = compact.rsplit("|", 1)
+    return bool(prefix.strip()) and suffix.strip().isdigit()
+
+
+def _source_lab_code_shapes(source_slide) -> list:
+    code_shapes = []
+    for shape in source_slide.shapes:
+        text = _shape_text(shape)
+        if text and _is_lab_code_text(text):
+            code_shapes.append(shape)
+    code_shapes.sort(key=lambda shape: (int(shape.top or 0), int(shape.left or 0)))
+    return code_shapes
+
+
+def _source_lab_prose_text(source_slide, code_shapes: list) -> str:
+    code_ids = {id(shape) for shape in code_shapes}
+    candidates: list[tuple[int, int, str]] = []
+    for shape in source_slide.shapes:
+        if id(shape) in code_ids:
+            continue
+        text = _shape_text(shape)
+        if not text or _is_lab_code_text(text) or _is_lab_footer_text(text):
+            continue
+        top = int(shape.top or 0)
+        if top <= TITLE_ROW_TOP + LAB_TITLE_HEIGHT:
+            continue
+        candidates.append((top, int(shape.left or 0), text))
+    return "\n".join(text for _top, _left, text in sorted(candidates)).strip()
+
+
+def _apply_lab_code_placeholder_text(dst_slide, source_slide, code_shapes: list) -> None:
+    prose = _source_lab_prose_text(source_slide, code_shapes)
+    try:
+        body = _ph_by_idx(dst_slide, 13 if dst_slide.slide_layout.name == "내지_거버닝 O" else 12)
+    except KeyError:
+        return
+    body.text = prose
+    if prose:
+        _apply_lab_body_typography(body, body_font_pt=14)
+    else:
+        body.fill.background()
+        _set_shape_line_no_fill(body)
+
+
+def apply_lab_code_block_shapes(
+    prs: Presentation,
+    specs: list[dict],
+    source_prs: Presentation,
+) -> int:
+    applied = 0
+    for slide, spec in zip(prs.slides, specs):
+        ingest = spec.get("_ingest") or {}
+        if not (_is_lab_lecture_spec(spec) and ingest.get("code_block")):
+            continue
+        source_slide = _source_slide_for_spec(source_prs, spec)
+        if source_slide is None:
+            continue
+        code_shapes = _source_lab_code_shapes(source_slide)
+        if len(code_shapes) < 2:
+            continue
+        _apply_lab_code_placeholder_text(slide, source_slide, code_shapes)
+        for shape in code_shapes:
+            before = len(slide.shapes)
+            copy_shape_hybrid(slide, shape)
+            if len(slide.shapes) > before:
+                applied += 1
+        if code_shapes:
+            renumber_shape_ids(slide)
+    return applied
 
 
 def fill_slide_text_placeholders(
@@ -720,7 +866,7 @@ def apply_background_images(prs: Presentation, specs: Iterable[dict]) -> int:
 
 
 def _should_preserve_visual_shapes(spec: dict) -> bool:
-    return (spec.get("_ingest") or {}).get("visual_preservation") == "native_shapes"
+    return _is_lab_visual_preservation_spec(spec)
 
 
 def _source_slide_for_spec(source_prs: Presentation, spec: dict):
@@ -740,10 +886,7 @@ def _remove_non_placeholder_shapes(slide) -> None:
 
 
 def _clear_content_body_placeholders(slide) -> None:
-    body_indices = (12, 13) if slide.slide_layout.name == "내지_거버닝 O" else (12,)
-    for shape in slide.placeholders:
-        if shape.placeholder_format.idx in body_indices:
-            shape.text = ""
+    _collapse_lab_body_placeholders(slide)
 
 
 def _shape_starts_below_header(shape) -> bool:

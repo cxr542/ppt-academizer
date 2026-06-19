@@ -319,6 +319,33 @@ def _copy_line(dst_shape, src_shape) -> None:
         pass
 
 
+def _set_shape_line_no_fill(shape) -> None:
+    a_ns = "http://schemas.openxmlformats.org/drawingml/2006/main"
+    ln = shape._element.find(f".//{{{a_ns}}}ln")
+    if ln is None:
+        return
+    for child in list(ln):
+        if child.tag in (
+            f"{{{a_ns}}}noFill",
+            f"{{{a_ns}}}solidFill",
+            f"{{{a_ns}}}gradFill",
+            f"{{{a_ns}}}pattFill",
+            f"{{{a_ns}}}blipFill",
+        ):
+            ln.remove(child)
+    no_fill = shape._element.makeelement(f"{{{a_ns}}}noFill")
+    ln.insert(0, no_fill)
+
+
+def _is_no_fill_text_shape(shape) -> bool:
+    if not (shape.has_text_frame and shape.text.strip()):
+        return False
+    try:
+        return shape.fill.type in (MSO_FILL.BACKGROUND, None)
+    except Exception:
+        return False
+
+
 def add_picture_safe(slide, shape, left=None, top=None) -> None:
     try:
         blob = shape.image.blob
@@ -418,6 +445,8 @@ def copy_autoshape_native(slide, shape, left, top) -> None:
         if shape.text.strip():
             tf.text = shape.text
             _copy_font_from_source(box, shape)
+            if _is_no_fill_text_shape(shape):
+                _set_shape_line_no_fill(box)
 
 
 def _strip_connector_style_element(conn) -> None:
