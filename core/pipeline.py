@@ -22,6 +22,7 @@ from pptx import Presentation  # noqa: E402
 
 from scripts.academy_deck_build_lib import (  # noqa: E402
     apply_background_images,
+    apply_lab_visual_shapes,
     build_from_json_specs,
     save_academy_deck,
 )
@@ -62,9 +63,9 @@ def collect_warnings(specs: list[dict], extra: list[dict] | None = None) -> list
 def _save_specs_to_pptx(
     specs: list[dict],
     *,
+    source: Path,
     tmp: Path,
     stem: str,
-    extra_warnings: list[dict] | None = None,
 ) -> Path:
     template = resolve_academy_template_path()
     out = tmp / f"academy-{stem}-{_stamp()}.pptx"
@@ -72,15 +73,35 @@ def _save_specs_to_pptx(
     prs = Presentation(str(out))
     build_from_json_specs(prs, specs)
     apply_background_images(prs, specs)
+    source_prs = Presentation(str(source))
+    apply_lab_visual_shapes(prs, specs, source_prs)
+    _apply_speaker_notes(prs, specs)
     if len(prs.slides) != len(specs):
         raise RuntimeError(f"slide count mismatch: built {len(prs.slides)}, expected {len(specs)}")
-    save_academy_deck(prs, out)
+    save_academy_deck(prs, out, specs=specs)
     return out
+
+
+def _mark_lab_lecture_layout(specs: list[dict]) -> None:
+    for spec in specs:
+        if spec.get("layout") not in ("내지_거버닝 O", "1_내지_거버닝 X"):
+            continue
+        ingest = spec.setdefault("_ingest", {})
+        ingest["layout_profile"] = "lab_lecture"
+
+
+def _apply_speaker_notes(prs: Presentation, specs: list[dict]) -> None:
+    for slide, spec in zip(prs.slides, specs):
+        notes = (spec.get("_ingest") or {}).get("speaker_notes")
+        if not notes:
+            continue
+        slide.notes_slide.notes_text_frame.text = str(notes)
 
 
 def _academize_spec_from_specs(
     specs: list[dict],
     *,
+    source: Path,
     tmp: Path,
     stem: str,
     route: str,
@@ -88,7 +109,7 @@ def _academize_spec_from_specs(
     source_format: str = "pptx",
     ingest_warnings: list[dict] | None = None,
 ) -> tuple[Path, list[dict], int, dict[str, Any]]:
-    out = _save_specs_to_pptx(specs, tmp=tmp, stem=stem)
+    out = _save_specs_to_pptx(specs, source=source, tmp=tmp, stem=stem)
 
     from scripts.migrate_version import MIGRATE_ENGINE_VERSION
 
@@ -117,6 +138,7 @@ def _academize_spec_path(
     tmp: Path,
     route: str,
     quality_mode: QualityMode = "standard",
+    lab_lecture_layout: bool = False,
 ) -> tuple[Path, list[dict], int, dict[str, Any]]:
     assets_dir = tmp / "assets"
     specs = convert_presentation(
@@ -127,9 +149,12 @@ def _academize_spec_path(
         include_default_front_matter=True,
         front_matter_mode="auto",
     )
+    if lab_lecture_layout:
+        _mark_lab_lecture_layout(specs)
     stem = source.stem.replace(" ", "-")[:40]
     return _academize_spec_from_specs(
         specs,
+        source=source,
         tmp=tmp,
         stem=stem,
         route=route,
@@ -218,7 +243,7 @@ def academize_pptx(
 
     prs = Presentation(str(source))
     source_slides = len(prs.slides)
-    detected, _ = detect_deck_profile(prs, filename_hint=source.name)
+    detected, route_meta = detect_deck_profile(prs, filename_hint=source.name)
     route = detected if profile == "auto" else profile
     mode = validate_quality_mode(
         quality_mode,
@@ -237,6 +262,7 @@ def academize_pptx(
         tmp=tmp,
         route=route,
         quality_mode=mode,
+        lab_lecture_layout=route_meta.get("reason") == "lab_lecture_structure",
     )
 
 

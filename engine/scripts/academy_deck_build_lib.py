@@ -15,6 +15,8 @@ from pptx.opc.constants import RELATIONSHIP_TYPE as RT
 from pptx.parts.slide import SlidePart
 from pptx.util import Inches, Pt
 
+from scripts.shape_migrate_lib import copy_shape_hybrid, renumber_shape_ids
+
 FONT_BODY = "프리젠테이션 4 Regular"
 FONT_TITLE = "프리젠테이션 8 ExtraBold"
 
@@ -29,6 +31,10 @@ HEADER_BOTTOM_EMU = 1_150_000
 GOVERNING_TOP = 757_189
 GOVERNING_WIDTH = 5_760_404
 TITLE_ROW_TOP = 370_849
+LAB_GOVERNING_TOP = 720_000
+LAB_BODY_TOP = 1_250_000
+LAB_TITLE_HEIGHT = 300_000
+LAB_GOVERNING_HEIGHT = 380_000
 TITLE_PT = 18
 CONTENT_TITLE_LAYOUTS = frozenset({"내지_거버닝 O", "1_내지_거버닝 X"})
 TITLE_PH10_MAX_CHARS = 72
@@ -513,6 +519,68 @@ def _fill_body_governing_x(slide, texts: list[str], *, title_font_pt: int, body_
     _assign_plain(_ph_by_idx(slide, 12), texts[1], title=False, title_font_pt=title_font_pt, body_font_pt=body_font_pt)
 
 
+def _is_lab_lecture_spec(spec: dict) -> bool:
+    return (spec.get("_ingest") or {}).get("layout_profile") == "lab_lecture"
+
+
+def _apply_lab_body_typography(shape, *, body_font_pt: int) -> None:
+    if not getattr(shape, "has_text_frame", False):
+        return
+    tf = shape.text_frame
+    configure_text_frame_for_wrap(tf)
+    tf.vertical_anchor = MSO_ANCHOR.TOP
+    for para in tf.paragraphs:
+        para.font.name = FONT_BODY
+        para.font.size = Pt(body_font_pt)
+        para.line_spacing = 1.08
+        para.space_after = Pt(3)
+
+
+def _apply_lab_lecture_content_layout(slide, spec: dict, *, body_font_pt: int) -> None:
+    if not _is_lab_lecture_spec(spec) or slide.slide_layout.name not in CONTENT_TITLE_LAYOUTS:
+        return
+    prs = _presentation_for_slide(slide)
+    sw, sh = int(prs.slide_width), int(prs.slide_height)
+    body_w = max(sw - BODY_AREA_LEFT - SLIDE_MARGIN_X, _MIN_BODY_PLACEHOLDER_W)
+    body_h = max(sh - LAB_BODY_TOP - SLIDE_MARGIN_BOTTOM, _MIN_BODY_PLACEHOLDER_H)
+
+    ph10 = _ph_by_idx(slide, 10)
+    ph10.left = LAYOUT_PH10_LEFT
+    ph10.top = TITLE_ROW_TOP
+    ph10.width = min(sw - LAYOUT_PH10_LEFT - SLIDE_MARGIN_X, int(Inches(10.5)))
+    ph10.height = max(int(ph10.height or 0), LAB_TITLE_HEIGHT)
+
+    if slide.slide_layout.name == "내지_거버닝 O":
+        ph12 = _ph_by_idx(slide, 12)
+        ph12.left = BODY_AREA_LEFT
+        ph12.top = LAB_GOVERNING_TOP
+        ph12.width = min(body_w, GOVERNING_WIDTH)
+        ph12.height = max(int(ph12.height or 0), LAB_GOVERNING_HEIGHT)
+        _apply_lab_body_typography(ph12, body_font_pt=14)
+
+        ph13 = _ph_by_idx(slide, 13)
+        ph13.left = BODY_AREA_LEFT
+        ph13.top = LAB_BODY_TOP
+        ph13.width = body_w
+        ph13.height = body_h
+        _apply_lab_body_typography(ph13, body_font_pt=max(14, body_font_pt - 1))
+        return
+
+    ph12 = _ph_by_idx(slide, 12)
+    ph12.left = BODY_AREA_LEFT
+    ph12.width = body_w
+    ph12.height = max(sh - int(ph12.top or 0) - SLIDE_MARGIN_BOTTOM, _MIN_BODY_PLACEHOLDER_H)
+    if not (spec.get("_ingest") or {}).get("code_block"):
+        ph12.top = LAB_BODY_TOP
+        ph12.height = body_h
+        _apply_lab_body_typography(ph12, body_font_pt=max(14, body_font_pt - 1))
+
+
+def apply_lab_lecture_layouts(prs: Presentation, specs: list[dict]) -> None:
+    for slide, spec in zip(prs.slides, specs):
+        _apply_lab_lecture_content_layout(slide, spec, body_font_pt=16)
+
+
 def fill_slide_from_spec(
     slide,
     spec: dict,
@@ -540,8 +608,30 @@ def fill_slide_from_spec(
         if layout_name in CONTENT_TITLE_LAYOUTS:
             rebalance_content_placeholders(slide)
             ensure_content_body_placeholder_geometry(slide)
+            _apply_lab_lecture_content_layout(slide, spec, body_font_pt=body_font_pt)
+            if (spec.get("_ingest") or {}).get("code_block"):
+                _apply_code_block_text_style(slide)
 
     _apply_spec_overrides(slide, spec, title_font_pt=title_font_pt, body_font_pt=body_font_pt)
+
+
+def _apply_code_block_text_style(slide) -> None:
+    body_indices = (12, 13) if slide.slide_layout.name == "내지_거버닝 O" else (12,)
+    for shape in slide.placeholders:
+        if shape.placeholder_format.idx not in body_indices:
+            continue
+        if not shape.has_text_frame:
+            continue
+        text = (shape.text or "").strip()
+        if not text:
+            continue
+        shape.text_frame.word_wrap = True
+        shape.text_frame.auto_size = MSO_AUTO_SIZE.NONE
+        for para in shape.text_frame.paragraphs:
+            para.alignment = PP_ALIGN.LEFT
+            for run in para.runs:
+                run.font.name = "Courier New"
+                run.font.size = Pt(10)
 
 
 def fill_slide_text_placeholders(
@@ -629,6 +719,72 @@ def apply_background_images(prs: Presentation, specs: Iterable[dict]) -> int:
     return applied
 
 
+def _should_preserve_visual_shapes(spec: dict) -> bool:
+    return (spec.get("_ingest") or {}).get("visual_preservation") == "native_shapes"
+
+
+def _source_slide_for_spec(source_prs: Presentation, spec: dict):
+    index = (spec.get("_ingest") or {}).get("source_slide_index")
+    if not isinstance(index, int):
+        return None
+    if index < 0 or index >= len(source_prs.slides):
+        return None
+    return source_prs.slides[index]
+
+
+def _remove_non_placeholder_shapes(slide) -> None:
+    for shape in list(slide.shapes):
+        if shape.is_placeholder:
+            continue
+        shape._element.getparent().remove(shape._element)
+
+
+def _clear_content_body_placeholders(slide) -> None:
+    body_indices = (12, 13) if slide.slide_layout.name == "내지_거버닝 O" else (12,)
+    for shape in slide.placeholders:
+        if shape.placeholder_format.idx in body_indices:
+            shape.text = ""
+
+
+def _shape_starts_below_header(shape) -> bool:
+    return int(shape.top or 0) >= LAB_BODY_TOP - 180_000
+
+
+def _copy_visual_shapes(src_slide, dst_slide, *, cover: bool) -> int:
+    copied = 0
+    for shape in src_slide.shapes:
+        if shape.is_placeholder:
+            continue
+        if not cover and not _shape_starts_below_header(shape):
+            continue
+        before = len(dst_slide.shapes)
+        copy_shape_hybrid(dst_slide, shape)
+        if len(dst_slide.shapes) > before:
+            copied += 1
+    if copied:
+        renumber_shape_ids(dst_slide)
+    return copied
+
+
+def apply_lab_visual_shapes(
+    prs: Presentation,
+    specs: list[dict],
+    source_prs: Presentation,
+) -> int:
+    applied = 0
+    for slide, spec in zip(prs.slides, specs):
+        if not _should_preserve_visual_shapes(spec):
+            continue
+        source_slide = _source_slide_for_spec(source_prs, spec)
+        if source_slide is None:
+            continue
+        cover = slide.slide_layout.name == "2_표지"
+        _remove_non_placeholder_shapes(slide)
+        _clear_content_body_placeholders(slide)
+        applied += _copy_visual_shapes(source_slide, slide, cover=cover)
+    return applied
+
+
 def build_from_json_specs(prs: Presentation, specs: Iterable[dict]) -> None:
     global _PLACEHOLDER_GEOM
     specs_list = list(specs)
@@ -639,6 +795,7 @@ def build_from_json_specs(prs: Presentation, specs: Iterable[dict]) -> None:
     try:
         _build_from_json_specs_loop(prs, specs_list, seeds, initial_part_ids)
         polish_academy_presentation(prs)
+        apply_lab_lecture_layouts(prs, specs_list)
     finally:
         _PLACEHOLDER_GEOM = None
 
@@ -858,10 +1015,12 @@ def fix_open_in_slide_view(path: Path) -> None:
     tmp.replace(path)
 
 
-def save_academy_deck(prs: Presentation, path: Path) -> None:
+def save_academy_deck(prs: Presentation, path: Path, specs: list[dict] | None = None) -> None:
     """Save with title polish + repair-safe round-trip + slide view fix."""
     path = Path(path)
     polish_academy_presentation(prs)
+    if specs is not None:
+        apply_lab_lecture_layouts(prs, specs)
     tmp = path.with_suffix(".tmp.pptx")
     prs.save(str(tmp))
     Presentation(str(tmp)).save(str(path))

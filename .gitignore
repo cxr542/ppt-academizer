@@ -1,6 +1,8 @@
 .DS_Store
 output/
+outputs/
 tests/fixtures/*.pptx
+tests/fixtures/real_world/*.pptx
 !tests/fixtures/manifest.json
 .venv/
 assets-*/

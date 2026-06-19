@@ -15,6 +15,7 @@ from scripts.deck_profile import (
     analyze_deck_structure,
     detect_deck_profile,
     is_ai_freeform_text_deck,
+    is_lab_lecture_deck,
     is_partner_shape_heavy,
 )
 from scripts.front_matter import _is_toc_like, extract_front_matter
@@ -86,6 +87,40 @@ def test_detect_cmp_filename(tmp_path: Path) -> None:
     profile, meta = detect_deck_profile(p)
     assert profile == "migrate_cmp"
     assert meta.get("reason") == "partner_shape_heavy"
+
+
+def test_lab_lecture_routes_spec_before_partner_heavy(tmp_path: Path) -> None:
+    p = tmp_path / "k8s-dashboard-lab.pptx"
+    prs = Presentation()
+    prs.slide_width = Inches(13.333)
+    prs.slide_height = Inches(7.5)
+    blank = prs.slide_layouts[6]
+    slide_terms = [
+        ("학습 목표", "Dashboard 실습 목표", "Deployment Service Ingress ConfigMap Volume Mount"),
+        ("리소스 생성용 YAML", "apiVersion: v1\nkind: Service\nmetadata:\n  name: nginx-service", "kubectl"),
+        ("강사용 진행 멘트", "Deployment", "“Deployment가 원하는 Pod 상태를 유지하게 합니다.”"),
+        ("검증 체크리스트", "성공 체크리스트", "Pod Running Ready 1/1"),
+        ("ConfigMap 적용 절차", "YAML Import", "volumeMounts containers"),
+        ("마무리", "Ingress URL 확인", "실습 완료"),
+        ("전체 실습 흐름", "Deployment Service Ingress", "ConfigMap Volume Mount"),
+        ("사전 준비", "Namespace StorageClass", "Dashboard 권한"),
+    ]
+    for title, body, extra in slide_terms:
+        slide = prs.slides.add_slide(blank)
+        for idx in range(5):
+            left = Inches(0.5 + idx * 1.8)
+            top = Inches(0.4 + idx * 0.6)
+            box = slide.shapes.add_textbox(left, top, Inches(1.5), Inches(0.4))
+            box.text_frame.text = f"{title}\n{body}\n{extra}"
+    prs.save(p)
+
+    st = analyze_deck_structure(Presentation(str(p)))
+    profile, meta = detect_deck_profile(p)
+
+    assert is_partner_shape_heavy(st)
+    assert is_lab_lecture_deck(st)
+    assert profile == "spec"
+    assert meta.get("reason") == "lab_lecture_structure"
 
 
 @pytest.mark.skipif(

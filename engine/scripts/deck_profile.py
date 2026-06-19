@@ -36,6 +36,28 @@ class DeckStructure:
     avg_text_blocks: float
     total_text_blocks: int
     text_slide_ratio: float
+    lab_signal_count: int
+
+
+LAB_LECTURE_TERMS = (
+    "실습",
+    "dashboard",
+    "yaml",
+    "deployment",
+    "service",
+    "ingress",
+    "configmap",
+    "volume mount",
+    "volumemount",
+    "강사용",
+    "학습 목표",
+    "성공 체크리스트",
+    "kubectl",
+    "apiversion",
+    "metadata",
+    "containers",
+    "volumemounts",
+)
 
 
 def _walk_shapes(shapes, counts: dict[str, int]) -> None:
@@ -58,12 +80,13 @@ def analyze_deck_structure(prs: Presentation) -> DeckStructure:
     """Content signals for §5 vs §7 routing (not filename)."""
     slide_count = len(prs.slides)
     if slide_count == 0:
-        return DeckStructure(0, 0, 0.0, 0, 0, 0, 0, 0.0, 0.0, 0, 0.0)
+        return DeckStructure(0, 0, 0.0, 0, 0, 0, 0, 0.0, 0.0, 0, 0.0, 0)
 
     counts = {"shapes": 0, "charts": 0, "tables": 0, "groups": 0, "pictures": 0}
     image_slides = 0
     text_slides = 0
     total_blocks = 0
+    lab_terms: set[str] = set()
 
     for slide in prs.slides:
         _walk_shapes(slide.shapes, counts)
@@ -71,6 +94,10 @@ def analyze_deck_structure(prs: Presentation) -> DeckStructure:
         if blocks:
             text_slides += 1
             total_blocks += len(blocks)
+            merged = "\n".join(str(block["text"]) for block in blocks).lower()
+            for term in LAB_LECTURE_TERMS:
+                if term in merged:
+                    lab_terms.add(term)
         if is_image_only_slide(slide):
             image_slides += 1
 
@@ -87,6 +114,7 @@ def analyze_deck_structure(prs: Presentation) -> DeckStructure:
         avg_text_blocks=total_blocks / slide_count,
         total_text_blocks=total_blocks,
         text_slide_ratio=text_slides / slide_count,
+        lab_signal_count=len(lab_terms),
     )
 
 
@@ -103,6 +131,7 @@ def _structure_to_meta(st: DeckStructure, extra: dict | None = None) -> dict:
         "group_count": st.group_count,
         "picture_count": st.picture_count,
         "text_slide_ratio": round(st.text_slide_ratio, 3),
+        "lab_signal_count": st.lab_signal_count,
     }
     if extra:
         meta.update(extra)
@@ -170,6 +199,18 @@ def is_text_lecture_deck(st: DeckStructure) -> bool:
     return False
 
 
+def is_lab_lecture_deck(st: DeckStructure) -> bool:
+    if st.slide_count < 6 or st.slide_count > 40:
+        return False
+    if st.text_slide_ratio < 0.8:
+        return False
+    if st.lab_signal_count < 7:
+        return False
+    if st.avg_text_blocks < 3.0:
+        return False
+    return True
+
+
 def detect_deck_profile(
     source: Path | Presentation,
     *,
@@ -189,6 +230,9 @@ def detect_deck_profile(
 
     if st.google_image_ratio >= 0.5 and st.total_text_blocks == 0:
         return "google_image", _structure_to_meta(st, {"reason": "majority_google_image_slides"})
+
+    if is_lab_lecture_deck(st):
+        return "spec", _structure_to_meta(st, {"reason": "lab_lecture_structure"})
 
     if is_partner_shape_heavy(st):
         cfg = config_for_kind(deck_kind)

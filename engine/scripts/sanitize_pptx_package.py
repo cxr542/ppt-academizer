@@ -313,6 +313,16 @@ def finalize_pptx_package(path: Path) -> int:
                 new_rel.write_bytes(old_rel.read_bytes())
                 old_rel.unlink(missing_ok=True)
 
+        notes_rels_dir = root / "ppt" / "notesSlides" / "_rels"
+        if notes_rels_dir.is_dir():
+            for notes_rels_path in notes_rels_dir.glob("*.rels"):
+                notes_rels = notes_rels_path.read_text(encoding="utf-8")
+                for old_name, new_name in mapping.items():
+                    notes_rels = notes_rels.replace(
+                        f"../slides/{old_name}", f"../slides/{new_name}"
+                    )
+                notes_rels_path.write_text(notes_rels, encoding="utf-8")
+
         new_pres_rels = pres_rels
         for old_name, new_name in mapping.items():
             new_pres_rels = new_pres_rels.replace(
