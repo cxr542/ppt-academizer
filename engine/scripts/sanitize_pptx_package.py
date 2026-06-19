@@ -76,6 +76,37 @@ def _strip_office_extensions_xml(data: bytes) -> bytes:
     )
 
 
+def _strip_text_outline_xml(data: bytes) -> bytes:
+    from lxml import etree
+
+    root = etree.fromstring(data)
+    text_props = {
+        f"{{{A_NS}}}rPr",
+        f"{{{A_NS}}}defRPr",
+        f"{{{A_NS}}}endParaRPr",
+    }
+    outline_tags = {
+        f"{{{A_NS}}}ln",
+        f"{{{A_NS}}}effectLst",
+        f"{{{A_NS}}}effectDag",
+    }
+    remove: list = []
+    for prop in root.iter():
+        if prop.tag not in text_props:
+            continue
+        for child in list(prop.iter()):
+            if child is prop or child.tag not in outline_tags:
+                continue
+            remove.append(child)
+    for child in remove:
+        parent = child.getparent()
+        if parent is not None:
+            parent.remove(child)
+    return etree.tostring(
+        root, xml_declaration=True, encoding="UTF-8", standalone=True
+    )
+
+
 _OVERRIDE_PART_RE = re.compile(
     r'<Override\b[^>]*PartName="(?P<part>[^"]+)"[^>]*/>',
     re.IGNORECASE,
@@ -313,6 +344,16 @@ def finalize_pptx_package(path: Path) -> int:
                 new_rel.write_bytes(old_rel.read_bytes())
                 old_rel.unlink(missing_ok=True)
 
+        notes_rels_dir = root / "ppt" / "notesSlides" / "_rels"
+        if notes_rels_dir.is_dir():
+            for notes_rels_path in notes_rels_dir.glob("*.rels"):
+                notes_rels = notes_rels_path.read_text(encoding="utf-8")
+                for old_name, new_name in mapping.items():
+                    notes_rels = notes_rels.replace(
+                        f"../slides/{old_name}", f"../slides/{new_name}"
+                    )
+                notes_rels_path.write_text(notes_rels, encoding="utf-8")
+
         new_pres_rels = pres_rels
         for old_name, new_name in mapping.items():
             new_pres_rels = new_pres_rels.replace(
@@ -357,6 +398,7 @@ def finalize_pptx_package(path: Path) -> int:
                 ):
                     raw = _normalize_slide_connectors(raw)
                 raw = _strip_office_extensions_xml(raw)
+                raw = _strip_text_outline_xml(raw)
                 xml_file.write_bytes(raw)
             except Exception:
                 pass

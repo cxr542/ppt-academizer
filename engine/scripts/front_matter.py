@@ -7,7 +7,7 @@ import re
 
 from pptx import Presentation
 
-from scripts.pptx_ingest import slide_text_blocks
+from scripts.pptx_ingest import iter_shapes, slide_notes_text, slide_text_blocks
 
 
 _CHAPTER_LINE_RE = re.compile(r"^\d+[\.\)]\s+\S")
@@ -41,6 +41,10 @@ def _is_cover_like(blocks: list[dict]) -> bool:
         return False
     if len(blocks) <= 4 and blocks[0]["len"] >= 4:
         return True
+    if len(blocks) <= 16 and blocks[0].get("top", 9.0) < 1.2:
+        merged = "\n".join(str(block["text"]) for block in blocks).lower()
+        if "dashboard" in merged and ("실습" in merged or "nginx" in merged):
+            return True
     return len(blocks) <= 2
 
 
@@ -78,6 +82,32 @@ def _compose_cover_text(blocks: list[dict]) -> str:
     return title
 
 
+def _attach_source_notes(spec: dict, slide, source_index: int) -> dict:
+    ing = dict(spec.get("_ingest") or {})
+    ing["source_slide_index"] = source_index
+    notes = slide_notes_text(slide)
+    if notes:
+        ing["speaker_notes"] = notes
+    if _is_visual_heavy_slide(slide):
+        ing["visual_preservation"] = "native_shapes"
+    spec["_ingest"] = ing
+    return spec
+
+
+def _is_visual_heavy_slide(slide) -> bool:
+    text_shapes = 0
+    visual_shapes = 0
+    for shape, depth in iter_shapes(slide.shapes):
+        if depth > 0:
+            visual_shapes += 1
+        if shape.is_placeholder:
+            continue
+        if shape.has_text_frame and (shape.text or "").strip():
+            text_shapes += 1
+        visual_shapes += 1
+    return visual_shapes >= 10 and text_shapes >= 5
+
+
 def extract_front_matter(
     prs: Presentation,
     *,
@@ -99,14 +129,24 @@ def extract_front_matter(
     if layout0 in ("2_표지", "표지") or _is_cover_like(b0):
         if b0:
             cover = _compose_cover_text(b0)
-            specs.append({"layout": "2_표지", "texts": [cover], "_ingest": {"kind": "source_cover"}})
+            specs.append(
+                _attach_source_notes(
+                    {"layout": "2_표지", "texts": [cover], "_ingest": {"kind": "source_cover"}},
+                    s0,
+                    0,
+                )
+            )
         else:
             specs.append(
-                {
-                    "layout": "2_표지",
-                    "texts": [f"{deck_title}\n{deck_subtitle}"],
-                    "_ingest": {"kind": "generated_cover"},
-                }
+                _attach_source_notes(
+                    {
+                        "layout": "2_표지",
+                        "texts": [f"{deck_title}\n{deck_subtitle}"],
+                        "_ingest": {"kind": "generated_cover"},
+                    },
+                    s0,
+                    0,
+                )
             )
         skip.add(0)
 
@@ -119,7 +159,13 @@ def extract_front_matter(
         if layout1 in ("목차", "TOC") or _is_toc_like(b1):
             toc_lines = _numbered_toc_lines(merged1) or [x["text"] for x in b1]
             toc_text = "\n".join(toc_lines)
-            specs.append({"layout": "목차", "texts": [toc_text], "_ingest": {"kind": "source_toc"}})
+            specs.append(
+                _attach_source_notes(
+                    {"layout": "목차", "texts": [toc_text], "_ingest": {"kind": "source_toc"}},
+                    s1,
+                    1,
+                )
+            )
             skip.add(1)
 
     if not specs:

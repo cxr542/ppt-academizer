@@ -26,6 +26,7 @@ from scripts.deck_migrate_config import (  # noqa: E402
     DeckMigrateConfig,
     migrate_config_for_source,
 )
+from scripts.pptx_ingest import slide_notes_text  # noqa: E402
 
 import scripts.academy_deck_build_lib as adl  # noqa: E402
 
@@ -714,6 +715,8 @@ def apply_slide_title_layout(slide, slide_width: int, title: str) -> None:
 
 def relayout_content_columns(slide, slide_width: int) -> None:
     """Two-column body: move right column left and stretch both columns to margins."""
+    if is_speaker_script_slide(slide):
+        return
     max_right = slide_width - bac.SLIDE_MARGIN_X
     mid_threshold = int(slide_width * 0.44)
     right_left = int(slide_width * CONTENT_RIGHT_COL_RATIO)
@@ -741,6 +744,26 @@ def relayout_content_columns(slide, slide_width: int) -> None:
     for sh in right_shapes:
         sh.left = right_left
         sh.width = right_width
+
+
+def is_speaker_script_slide(slide) -> bool:
+    texts = [
+        (shape.text or "").strip()
+        for shape in slide.shapes
+        if shape.has_text_frame and (shape.text or "").strip()
+    ]
+    merged = "\n".join(texts)
+    if "강사용" in merged or "강의 포인트" in merged:
+        return True
+    quoted_lines = sum(1 for text in texts if "“" in text or '"' in text)
+    short_labels = sum(1 for text in texts if len(text) <= 16 and "\n" not in text)
+    return quoted_lines >= 3 and short_labels >= 3
+
+
+def copy_speaker_notes(src_slide, dst_slide) -> None:
+    notes = slide_notes_text(src_slide)
+    if notes:
+        dst_slide.notes_slide.notes_text_frame.text = notes
 
 
 def fill_cover_from_source(slide, src_slide, cfg: DeckMigrateConfig) -> None:
@@ -1012,6 +1035,7 @@ def _migrate_cmp_deck_body(
             slide = duplicate_slide_from_seed(prs, seeds[LAYOUT_COVER])
             _prepare_slide_for_editing(slide)
             fill_cover_from_source(slide, src_slide, cfg)
+            copy_speaker_notes(src_slide, slide)
             add_toc_after_cover(prs, seeds, src, src_idx, cfg)
         elif kind == "section":
             content_step = 0
@@ -1019,10 +1043,12 @@ def _migrate_cmp_deck_body(
             slide = duplicate_slide_from_seed(prs, seeds[LAYOUT_SECTION])
             _prepare_slide_for_editing(slide)
             fill_section_from_source(slide, src_slide, section_num)
+            copy_speaker_notes(src_slide, slide)
         else:
             content_step += 1
             slide = duplicate_slide_from_seed(prs, seeds[LAYOUT_CONTENT])
             _prepare_slide_for_editing(slide)
+            copy_speaker_notes(src_slide, slide)
             charts_in = _count_charts(src_slide)
             src_empty = (
                 classify_slide(src_slide, src_idx, cfg.part_cover_indices) == "empty"

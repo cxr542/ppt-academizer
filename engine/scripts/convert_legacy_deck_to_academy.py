@@ -15,6 +15,7 @@ from scripts.front_matter import extract_front_matter
 from scripts.pptx_ingest import (
     export_slide_background_image,
     is_image_only_slide,
+    iter_shapes,
     slide_notes_text,
     slide_text_blocks,
 )
@@ -170,6 +171,9 @@ def _pick_title_and_body_from_blocks(usable: list[dict]) -> tuple[str, str, str]
                 break
     if subtitle.strip() == title_text.strip():
         subtitle = ""
+    if _should_promote_speaker_script_heading(title_text, subtitle, body):
+        body = f"{title_text}\n\n{body}".strip()
+        title_text, subtitle = subtitle, title_text
     return title_text, body, subtitle
 
 
@@ -182,6 +186,66 @@ def _classify_category(text: str) -> bool:
         "Docker cli",
         "kubectl",
     } or text.startswith("간단 사용법")
+
+
+CODE_BLOCK_TOKENS = (
+    "apiVersion:",
+    "kind:",
+    "metadata:",
+    "spec:",
+    "containers:",
+    "volumeMounts:",
+    "kubectl",
+    "ingressClassName:",
+)
+
+
+def _contains_code_block(text: str) -> bool:
+    return any(token in text for token in CODE_BLOCK_TOKENS)
+
+
+def _is_visual_heavy_slide(slide, *, code_block: bool = False) -> bool:
+    if code_block:
+        return False
+    text_shapes = 0
+    visual_shapes = 0
+    for shape, depth in iter_shapes(slide.shapes):
+        if depth > 0:
+            visual_shapes += 1
+        if shape.is_placeholder:
+            continue
+        if shape.has_text_frame and (shape.text or "").strip():
+            text_shapes += 1
+        visual_shapes += 1
+    return visual_shapes >= 10 and text_shapes >= 5
+
+
+def _is_speaker_script_heading(text: str) -> bool:
+    compact = " ".join((text or "").split())
+    return ("강사용" in compact or "강사" in compact) and (
+        "멘트" in compact or "스크립트" in compact or "진행" in compact
+    )
+
+
+def _should_promote_speaker_script_heading(title: str, subtitle: str, body: str) -> bool:
+    quoted_lines = sum(1 for line in body.splitlines() if line.strip().startswith(("“", '"')))
+    return _is_speaker_script_heading(subtitle) and len(title.strip()) <= 24 and quoted_lines >= 2
+
+
+def _attach_ingest_metadata(spec: dict, slide, slide_no: int, *, code_block: bool = False) -> dict:
+    ing = dict(spec.get("_ingest") or {})
+    ing["source_slide_index"] = slide_no - 1
+    notes = slide_notes_text(slide)
+    if notes:
+        ing["speaker_notes"] = notes
+    if code_block:
+        ing["code_block"] = True
+        ing["code_block_shape_preservation"] = "source_text_boxes"
+        ing["warning"] = "YAML/code block detected; verify indentation and wrapping."
+    if _is_visual_heavy_slide(slide, code_block=code_block):
+        ing["visual_preservation"] = "native_shapes"
+    spec["_ingest"] = ing
+    return spec
 
 
 def _spec_from_image_slide(
@@ -239,26 +303,34 @@ def _slide_to_spec(
     if is_image_only_slide(slide):
         spec = _spec_from_image_slide(slide, slide_no, assets_dir=assets_dir, deck_title=deck_title)
         spec["_ingest"]["layout_reason"] = "google_image_slide"
-        return spec
+        return _attach_ingest_metadata(spec, slide, slide_no)
 
     layout_name = slide.slide_layout.name
     blocks = slide_text_blocks(slide)
 
     if not blocks:
-        return {
-            "layout": "내지_거버닝 O",
-            "texts": [f"슬라이드 {slide_no}", "", ""],
-            "_ingest": {"layout_reason": "empty_slide"},
-        }
+        return _attach_ingest_metadata(
+            {
+                "layout": "내지_거버닝 O",
+                "texts": [f"슬라이드 {slide_no}", "", ""],
+                "_ingest": {"layout_reason": "empty_slide"},
+            },
+            slide,
+            slide_no,
+        )
 
     # Chapter divider (간지)
     if layout_name == "간지" or (len(blocks) <= 2 and all(b["len"] < 30 for b in blocks)):
         title = max(blocks, key=lambda b: b["len"])["text"]
-        return {
-            "layout": "간지",
-            "texts": [title, f"{chapter_no}."],
-            "_ingest": {"layout_reason": "layout_name_간지" if layout_name == "간지" else "heuristic_section"},
-        }
+        return _attach_ingest_metadata(
+            {
+                "layout": "간지",
+                "texts": [title, f"{chapter_no}."],
+                "_ingest": {"layout_reason": "layout_name_간지" if layout_name == "간지" else "heuristic_section"},
+            },
+            slide,
+            slide_no,
+        )
 
     usable = [
         b
@@ -269,21 +341,32 @@ def _slide_to_spec(
     ]
     if not usable:
         usable = blocks
+    has_code_block = any(_contains_code_block(b["text"]) for b in usable)
 
     if 1 <= len(usable) <= 6:
         title_text, body, subtitle = _pick_title_and_body_from_blocks(usable)
         if body:
             if subtitle:
-                return {
-                    "layout": "내지_거버닝 O",
-                    "texts": [title_text, subtitle, body],
-                    "_ingest": {"layout_reason": "title_subtitle_body_stack"},
-                }
-            return {
-                "layout": "1_내지_거버닝 X",
-                "texts": [title_text, body],
-                "_ingest": {"layout_reason": "title_body_stack"},
-            }
+                return _attach_ingest_metadata(
+                    {
+                        "layout": "내지_거버닝 O",
+                        "texts": [title_text, subtitle, body],
+                        "_ingest": {"layout_reason": "title_subtitle_body_stack"},
+                    },
+                    slide,
+                    slide_no,
+                    code_block=has_code_block,
+                )
+            return _attach_ingest_metadata(
+                {
+                    "layout": "1_내지_거버닝 X",
+                    "texts": [title_text, body],
+                    "_ingest": {"layout_reason": "title_body_stack"},
+                },
+                slide,
+                slide_no,
+                code_block=has_code_block,
+            )
 
     categories = [b for b in usable if _classify_category(b["text"]) or 0.45 <= b["top"] <= 0.75]
     titles = [
@@ -325,6 +408,16 @@ def _slide_to_spec(
             if b["text"] != title_text and b["len"] < 24:
                 subtitle = b["text"]
                 break
+    if not subtitle:
+        subtitle_candidates = [
+            b
+            for b in usable
+            if b["text"] != title_text
+            and 0.70 <= b["top"] <= 1.15
+            and len(_first_line(b["text"])) <= 120
+        ]
+        if subtitle_candidates:
+            subtitle = _first_line(subtitle_candidates[0]["text"])
     if subtitle.strip() == title_text.strip():
         subtitle = ""
 
@@ -344,17 +437,31 @@ def _slide_to_spec(
 
     if not subtitle or (len(body) > 400 and "\n\n" not in body[:200]):
         merged = body or subtitle or title_text
-        return {
-            "layout": "1_내지_거버닝 X",
-            "texts": [title_text, merged],
-            "_ingest": {"layout_reason": "long_body_or_no_governing"},
-        }
+        return _attach_ingest_metadata(
+            {
+                "layout": "1_내지_거버닝 X",
+                "texts": [title_text, merged],
+                "_ingest": {"layout_reason": "long_body_or_no_governing"},
+            },
+            slide,
+            slide_no,
+            code_block=has_code_block,
+        )
 
-    return {
-        "layout": "내지_거버닝 O",
-        "texts": [title_text, subtitle or " ", body or " "],
-        "_ingest": {"layout_reason": "title_subtitle_body"},
-    }
+    if _should_promote_speaker_script_heading(title_text, subtitle, body):
+        body = f"{title_text}\n\n{body}".strip()
+        title_text, subtitle = subtitle, title_text
+
+    return _attach_ingest_metadata(
+        {
+            "layout": "내지_거버닝 O",
+            "texts": [title_text, subtitle or " ", body or " "],
+            "_ingest": {"layout_reason": "title_subtitle_body"},
+        },
+        slide,
+        slide_no,
+        code_block=has_code_block,
+    )
 
 
 def convert_presentation(
