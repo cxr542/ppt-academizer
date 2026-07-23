@@ -5,6 +5,7 @@ tests/fixtures/*.pptx
 tests/fixtures/real_world/*.pptx
 !tests/fixtures/manifest.json
 .venv/
+.env.local
 assets-*/
 __pycache__/
 *.pyc

@@ -1,5 +1,5 @@
-# Optional API host for Netlify UI — https://render.com
-# After deploy, set Netlify env PPT_ACADEMIZER_API_URL=https://<service>.onrender.com
+# Docker API for EDU-TMS — set TEMPLATE_PPTX after deploy
+# docs/DEPLOY-TMS-RENDER.md
 
 services:
   - type: web
@@ -11,6 +11,6 @@ services:
       - key: PPT_ACADEMIZER_SKIP_PP_REPAIR
         value: "1"
       - key: PPT_ACADEMIZER_CORS_ORIGINS
-        sync: false
+        value: "https://edu-team-tms-ten.vercel.app,http://localhost:3000,http://127.0.0.1:3000"
       - key: TEMPLATE_PPTX
         sync: false
