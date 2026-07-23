@@ -29,7 +29,10 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 
 ## Netlify 배포
 
-UI는 Netlify, 변환 API는 Python 호스트(Render 등)에 두는 구성입니다.  
+> **EDU-TMS:** Netlify UI/프록시는 deprecated. TMS React가 Render(또는 로컬) FastAPI를 직접 호출합니다.  
+> → [docs/DEPLOY-TMS-RENDER.md](docs/DEPLOY-TMS-RENDER.md)
+
+레거시: UI만 Netlify, 변환 API는 Python 호스트(Render 등).  
 → [docs/DEPLOY-NETLIFY.md](docs/DEPLOY-NETLIFY.md) (팀: [cxr542 Netlify](https://app.netlify.com/teams/cxr542/projects))
 
 ## 엔진 (ppt-test 독립)

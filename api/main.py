@@ -41,9 +41,15 @@ logging.basicConfig(level=logging.INFO)
 WEB = ROOT / "web"
 app = FastAPI(title="ppt-academizer", version=SERVICE_VERSION)
 
-_cors_raw = os.environ.get("PPT_ACADEMIZER_CORS_ORIGINS", "").strip()
-if _cors_raw:
-    _origins = [o.strip() for o in _cors_raw.split(",") if o.strip()]
+# Default origins for TMS (Vercel) + local Vite. Override with PPT_ACADEMIZER_CORS_ORIGINS.
+_DEFAULT_CORS_ORIGINS = (
+    "https://edu-team-tms-ten.vercel.app,"
+    "http://localhost:3000,"
+    "http://127.0.0.1:3000"
+)
+_cors_raw = os.environ.get("PPT_ACADEMIZER_CORS_ORIGINS", _DEFAULT_CORS_ORIGINS).strip()
+_origins = [o.strip() for o in _cors_raw.split(",") if o.strip()]
+if _origins:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=_origins,

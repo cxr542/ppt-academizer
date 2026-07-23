@@ -346,17 +346,51 @@ def _is_no_fill_text_shape(shape) -> bool:
         return False
 
 
+def _clamp_picture_box(slide, left, top, width, height, *, margin_emu: int = 457200):
+    """Fit picture box inside slide with ~0.5\" margin (EMU). Keeps aspect ratio."""
+    try:
+        sw = int(slide.part.slide_layout.slide_master.part.slide_width)
+        sh = int(slide.part.slide_layout.slide_master.part.slide_height)
+    except Exception:
+        try:
+            prs = slide.part.package.presentation_part.presentation
+            sw = int(prs.slide_width)
+            sh = int(prs.slide_height)
+        except Exception:
+            return left, top, width, height
+
+    usable_w = max(sw - 2 * margin_emu, margin_emu)
+    usable_h = max(sh - 2 * margin_emu, margin_emu)
+    left = int(left if left is not None else 0)
+    top = int(top if top is not None else 0)
+    width = max(int(width), 1)
+    height = max(int(height), 1)
+
+    scale = min(usable_w / width, usable_h / height, 1.0)
+    new_w = max(int(width * scale), 1)
+    new_h = max(int(height * scale), 1)
+    left = min(max(left, margin_emu), sw - margin_emu - new_w)
+    top = min(max(top, margin_emu), sh - margin_emu - new_h)
+    return left, top, new_w, new_h
+
+
 def add_picture_safe(slide, shape, left=None, top=None) -> None:
+    """Copy a picture onto ``slide``, clamping to academy-safe margins when needed."""
     try:
         blob = shape.image.blob
     except Exception:
         return
+    box_left = left if left is not None else shape.left
+    box_top = top if top is not None else shape.top
+    box_left, box_top, box_w, box_h = _clamp_picture_box(
+        slide, box_left, box_top, shape.width, shape.height
+    )
     slide.shapes.add_picture(
         io.BytesIO(blob),
-        left if left is not None else shape.left,
-        top if top is not None else shape.top,
-        width=shape.width,
-        height=shape.height,
+        box_left,
+        box_top,
+        width=box_w,
+        height=box_h,
     )
 
 
