@@ -19,7 +19,12 @@ def _src_slide_label(w: dict) -> int | None:
 def _sanitize_technical_message(msg: str, code: str) -> str:
     if not msg:
         return ""
-    if _TRACEBACK_RE.search(msg) or "ModuleNotFoundError" in msg or "ImportError" in msg:
+    if (
+        _TRACEBACK_RE.search(msg)
+        or "ModuleNotFoundError" in msg
+        or "ImportError" in msg
+        or "SyntaxError" in msg
+    ):
         if code == "OOXML_VALIDATE_FAILED":
             return (
                 "PPTX 구조 자동 검증을 실행하지 못했습니다. "

@@ -25,6 +25,22 @@ def test_traceback_hidden() -> None:
     assert "PowerPoint" in w["message"] or "검증" in w["message"]
 
 
+def test_syntax_error_hidden() -> None:
+    w = format_warning(
+        {
+            "code": "OOXML_VALIDATE_FAILED",
+            "message": (
+                'File "engine/office/validate.py", line 80\n'
+                "    match file_extension:\n"
+                "SyntaxError: invalid syntax"
+            ),
+        }
+    )
+    assert "SyntaxError" not in w["message"]
+    assert "match file_extension" not in w["message"]
+    assert "검증" in w["message"] or "PowerPoint" in w["message"]
+
+
 def test_format_warnings_skips_meta() -> None:
     out = format_warnings([{"code": "MIGRATE_META", "deck_kind": "cmp"}])
     assert out == []

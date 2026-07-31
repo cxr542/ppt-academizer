@@ -34,6 +34,7 @@ from core.ppt_test_path import ensure_engine_on_path  # noqa: E402
 ensure_engine_on_path()
 
 from core.pipeline import academize_pptx  # noqa: E402
+from core.slide_limits import standard_max_slides  # noqa: E402
 from pptx import Presentation  # noqa: E402
 from pptx.exc import PackageNotFoundError  # noqa: E402
 
@@ -216,13 +217,18 @@ def _evaluate_fixture(fixture: Fixture, *, convert: bool) -> FixtureResult:
         )
 
     work_dir = OUTPUT_DIR / "artifacts" / path.stem
+    # Use standard when under the quality tier; unlimited only when over the limit
+    # (avoids false QUALITY_MODE_UNLIMITED warnings on small decks).
+    quality_mode = (
+        "unlimited" if source_slide_count > standard_max_slides() else "standard"
+    )
     try:
         output, warnings, _, _ = academize_pptx(
             path,
             deck_title=path.stem,
             deck_subtitle="Real-world fixture evaluation",
             work_dir=work_dir,
-            quality_mode="unlimited",
+            quality_mode=quality_mode,
         )
         output_slide_count = _slide_count(output)
         return FixtureResult(
