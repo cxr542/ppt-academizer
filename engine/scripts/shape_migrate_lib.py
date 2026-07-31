@@ -57,7 +57,8 @@ TITLE_LEFT = ACADEMY_TITLE_LEFT
 TITLE_TOP = 370_849
 TITLE_WIDTH = 9_948_172  # keeps right edge; was 9660000 when title started at 1059435
 GOV_LEFT, GOV_TOP, GOV_WIDTH = 514_984, 757_189, 5_760_404
-GOV_MAX_LEN = 42
+# Template guide: governing ≤ 2 lines @ 14pt in GOV_WIDTH (~40 Hangul/line).
+GOV_MAX_LEN = 96
 BODY_TOP_MIN = 1_050_000
 RIGHT_COL_MIN = 7_000_000
 CONTENT_LAYOUTS = {"내지_거버닝 O", "1_내지_거버닝 X"}
@@ -72,13 +73,21 @@ def norm(text: str) -> str:
 
 
 def text_similar(a: str, b: str) -> bool:
+    """True for equal/near-equal lines — not short token subsets (e.g. ``H/W`` ⊂ title)."""
     if not a or not b:
         return False
     a, b = norm(a), norm(b)
     if a == b:
         return True
     n = min(28, len(a), len(b))
-    return a[:n] == b[:n] or a in b or b in a
+    # Prefix match only when both sides share a meaningful head.
+    if n >= 8 and a[:n] == b[:n]:
+        return True
+    shorter, longer = (a, b) if len(a) <= len(b) else (b, a)
+    # Substring only for substantial phrases (avoids dropping chip labels).
+    if len(shorter) >= 12 and shorter in longer:
+        return True
+    return False
 
 
 def set_placeholder(slide, idx: int, text: str) -> None:
@@ -117,6 +126,17 @@ def extract_header(src_slide):
     return title, governing
 
 
+def _is_footer_page_number(shape, text: str) -> bool:
+    """True for 1–3 digit footer markers (not McKinsey step labels like 01–05)."""
+    t = (text or "").strip()
+    if not (t.isdigit() and len(t) <= 3):
+        return False
+    top = int(shape.top or 0)
+    left = int(shape.left or 0)
+    # Source McKinsey page marks sit bottom-right (~6.3M×10.4M EMU).
+    return top >= 5_500_000 and left >= 9_000_000
+
+
 def is_body_shape(shape, title: str | None, governing: str | None) -> bool:
     if shape.name in SKIP_SHAPE_NAMES:
         return False
@@ -125,6 +145,7 @@ def is_body_shape(shape, title: str | None, governing: str | None) -> bool:
 
     st = shape.shape_type
     top = int(shape.top or 0)
+    left = int(shape.left or 0)
     w, h = int(shape.width or 0), int(shape.height or 0)
 
     # Pictures / lines / groups / tables: do not drop large diagrams in the header band.
@@ -138,36 +159,81 @@ def is_body_shape(shape, title: str | None, governing: str | None) -> bool:
             return w >= 1_200_000 or h >= 900_000
         return True
 
-    # Google-export thin vertical rules beside the title strip.
-    if st == MSO_SHAPE_TYPE.AUTO_SHAPE and w < 250_000 and h > 200_000:
+    # Thin vertical accent rules (AUTO_SHAPE or solid TEXT_BOX chrome).
+    if st in (MSO_SHAPE_TYPE.AUTO_SHAPE, MSO_SHAPE_TYPE.TEXT_BOX) and w < 250_000 and h > 200_000:
+        if st == MSO_SHAPE_TYPE.AUTO_SHAPE:
+            return True
+        try:
+            if shape.fill.type == MSO_FILL.SOLID:
+                return True
+        except Exception:
+            pass
+
+    def _matches_header(text: str, header: str | None) -> bool:
+        if not header:
+            return False
+        compact = norm(text.replace("\x0b", " "))
+        target = norm(header.replace("\x0b", " "))
+        if not compact or not target:
+            return False
+        return compact == target or text_similar(compact, target)
+
+    def _header_text_ok(text: str) -> bool:
+        if not text:
+            return True
+        if _is_footer_page_number(shape, text):
+            return False
+        if _matches_header(text, title) or _matches_header(text, governing):
+            return False
         return True
 
-    if top and top < HEADER_BOTTOM_EMU:
+    def _has_solid_fill() -> bool:
+        try:
+            return shape.fill.type == MSO_FILL.SOLID
+        except Exception:
+            return False
+
+    def _is_filled_chrome() -> bool:
+        """McKinsey/card decks use empty solid textboxes as colored panels."""
+        return _has_solid_fill() and w >= 100_000 and h >= 200_000
+
+    # Tall/wide panels often start under the title row (UI mockups, side rails).
+    # Keep them when they clearly extend into the body band.
+    if top < HEADER_BOTTOM_EMU:
+        bottom = top + max(h, 0)
+        extends_into_body = bottom > HEADER_BOTTOM_EMU + 400_000
+        if st in (MSO_SHAPE_TYPE.AUTO_SHAPE, MSO_SHAPE_TYPE.TEXT_BOX):
+            text = shape.text.strip() if shape.has_text_frame else ""
+            if not _header_text_ok(text):
+                return False
+            if extends_into_body:
+                if h >= 1_200_000 or w >= 2_800_000 or (text and h >= 350_000):
+                    return True
+                if not text and _is_filled_chrome():
+                    return True
+            # Compact section labels just under the governing strip (e.g. Control Plane · Master).
+            if (
+                text
+                and top >= 850_000
+                and h <= 450_000
+                and w < 8_000_000
+                and left < 10_000_000
+            ):
+                return True
         return False
 
     if st == MSO_SHAPE_TYPE.AUTO_SHAPE:
         if shape.has_text_frame:
             text = shape.text.strip()
-            if text:
-                if text.isdigit() and len(text) <= 3:
-                    return False
-                first = text.split("\n")[0]
-                if title and first == title:
-                    return False
-                if governing and first == governing:
-                    return False
+            if text and not _header_text_ok(text):
+                return False
         return True
 
     if shape.has_text_frame:
         text = shape.text.strip()
         if not text:
-            return False
-        if text.isdigit() and len(text) <= 3:
-            return False
-        first = text.split("\n")[0]
-        if title and first == title:
-            return False
-        if governing and first == governing:
+            return _is_filled_chrome()
+        if not _header_text_ok(text):
             return False
     return True
 
@@ -432,14 +498,24 @@ def _copy_font_from_source(dst_shape, src_shape) -> None:
 
 
 def copy_textbox_native(slide, shape, left=None, top=None) -> None:
-    box = slide.shapes.add_textbox(
-        left if left is not None else shape.left,
-        top if top is not None else shape.top,
-        shape.width,
-        shape.height,
-    )
+    """Copy textbox; solid empty cards become rectangles so fills survive in PP."""
+    left_v = left if left is not None else shape.left
+    top_v = top if top is not None else shape.top
+    text = (shape.text or "").strip() if shape.has_text_frame else ""
+    solid_chrome = False
+    try:
+        solid_chrome = shape.fill.type == MSO_FILL.SOLID and not text
+    except Exception:
+        solid_chrome = False
+    if solid_chrome:
+        # McKinsey-style colored panels exported as empty textboxes.
+        copy_autoshape_native(slide, shape, left_v, top_v)
+        return
+    box = slide.shapes.add_textbox(left_v, top_v, shape.width, shape.height)
     box.text_frame.word_wrap = True
     box.text_frame.auto_size = MSO_AUTO_SIZE.NONE
+    _copy_fill(box, shape)
+    _copy_line(box, shape)
     if shape.has_text_frame:
         box.text_frame.text = shape.text
         _copy_font_from_source(box, shape)

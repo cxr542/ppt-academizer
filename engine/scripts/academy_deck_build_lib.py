@@ -57,8 +57,9 @@ _CODE_BLOCK_TOKENS = (
 #   표지 가이드     → 2_표지
 #   간지1 가이드    → 목차 (CONTENTS)
 #   간지2 가이드    → 간지 (챕터 타이틀 + 번호)
-#   본문 거버닝 O   → 내지_거버닝 O  (ph10 제목, ph12 거버닝 메시지, ph13 본문)
-#   본문 거버닝 X   → 1_내지_거버닝 X (ph10 제목, ph12 본문)
+#   내지_거버닝 O   → ph10 제목, ph12 스텝 번호, ph13 거버닝 메시지 (본문은 free shape)
+#   1_내지_거버닝 X → ph10 제목, ph12 본문(가이드)  — JSON ingest may overload slots
+# Legacy JSON `_fill_body_governing_o` still maps [title, gov, body] → ph10/ph12/ph13.
 
 _LAYOUT_HANDLERS: dict[str, str] = {
     "2_표지": "_fill_cover",
@@ -158,8 +159,40 @@ def _placeholder_too_narrow(ph) -> bool:
     return int(ph.width or 0) < _MIN_BODY_PLACEHOLDER_W
 
 
+def _ph_plain_text(ph) -> str:
+    return (getattr(ph, "text", None) or "").strip()
+
+
+def _is_step_number_text(text: str) -> bool:
+    t = (text or "").strip()
+    return bool(t) and t.isdigit() and len(t) <= 3
+
+
+def _pin_placeholder_box(ph, left: int, top: int, width: int, height: int) -> None:
+    ph.left, ph.top, ph.width, ph.height = int(left), int(top), int(width), int(height)
+
+
+def _seed_or_layout_box(slide, idx: int) -> tuple[int, int, int, int] | None:
+    """Return merged seed/layout geometry for placeholder idx when available."""
+    if _PLACEHOLDER_GEOM is None:
+        return None
+    seed_geoms, layout_geoms = _PLACEHOLDER_GEOM
+    name = slide.slide_layout.name
+    seed = seed_geoms.get(name, {}).get(idx)
+    layout = layout_geoms.get(name, {}).get(idx)
+    if seed is None:
+        return layout
+    if layout is None:
+        return seed
+    return _merge_seed_layout_box(seed, layout)
+
+
 def ensure_content_body_placeholder_geometry(slide) -> None:
-    """Template starter slides collapse ph12/ph13 (≈0.13in wide) — expand to body band."""
+    """Size content placeholders without scrambling template header roles.
+
+    ``내지_거버닝 O`` template roles: ph10 title, ph12 step number, ph13 governing.
+    JSON ingest may overload ph12=governing / ph13=body — detect via ph12 text.
+    """
     layout = slide.slide_layout.name
     if layout not in CONTENT_TITLE_LAYOUTS:
         return
@@ -179,25 +212,44 @@ def ensure_content_body_placeholder_geometry(slide) -> None:
         return
 
     ph12 = _placeholder_idx(slide, 12)
-    if _placeholder_too_narrow(ph12):
-        ph12.left = BODY_AREA_LEFT
-        ph12.top = GOVERNING_TOP
-        ph12.width = min(max_w, GOVERNING_WIDTH)
-        ph12.height = max(int(ph12.height or 0), int(Inches(0.45)))
-
     try:
         ph13 = _placeholder_idx(slide, 13)
     except KeyError:
+        ph13 = None
+
+    t12 = _ph_plain_text(ph12)
+    json_gov_in_ph12 = bool(t12) and not _is_step_number_text(t12)
+
+    if json_gov_in_ph12:
+        # Legacy JSON: ph12 governing + ph13 body band.
+        if _placeholder_too_narrow(ph12) or int(ph12.top or 0) < GOVERNING_TOP - 20_000:
+            ph12.left = BODY_AREA_LEFT
+            ph12.top = GOVERNING_TOP
+            ph12.width = min(max_w, GOVERNING_WIDTH)
+            ph12.height = max(int(ph12.height or 0), int(Inches(0.45)))
+        if ph13 is None:
+            return
+        body_top = max(int(ph13.top or 0), BODY_TOP_MIN)
+        body_h = sh - body_top - SLIDE_MARGIN_BOTTOM
+        if _placeholder_too_narrow(ph13) or int(ph13.height or 0) < _MIN_BODY_PLACEHOLDER_H:
+            ph13.left = BODY_AREA_LEFT
+            ph13.top = body_top
+            ph13.width = max(max_w, _MIN_BODY_PLACEHOLDER_W)
+            ph13.height = max(body_h, _MIN_BODY_PLACEHOLDER_H)
         return
+
+    # Template / migrate_cmp: keep step number + governing boxes.
+    num_box = _seed_or_layout_box(slide, 12) or (515_938, 360_540, 121_828, 215_444)
+    _pin_placeholder_box(ph12, *num_box)
     if ph13 is None:
         return
-    body_top = max(int(ph13.top or 0), BODY_TOP_MIN)
-    body_h = sh - body_top - SLIDE_MARGIN_BOTTOM
-    if _placeholder_too_narrow(ph13) or int(ph13.height or 0) < _MIN_BODY_PLACEHOLDER_H:
-        ph13.left = BODY_AREA_LEFT
-        ph13.top = body_top
-        ph13.width = max(max_w, _MIN_BODY_PLACEHOLDER_W)
-        ph13.height = max(body_h, _MIN_BODY_PLACEHOLDER_H)
+    gov_box = _seed_or_layout_box(slide, 13) or (
+        BODY_AREA_LEFT,
+        GOVERNING_TOP,
+        GOVERNING_WIDTH,
+        int(Inches(0.26)),
+    )
+    _pin_placeholder_box(ph13, *gov_box)
 
 
 def _prepare_slide_for_editing(slide) -> None:
@@ -1039,15 +1091,14 @@ def rebalance_content_placeholders(slide) -> None:
 
 
 def apply_content_header_geometry(slide, slide_width: int | None = None) -> None:
-    """Official template ph10/ph12 header positions (not full-slide PaaS width)."""
+    """Official template ph10 title row + ph12 step / ph13 governing positions."""
+    _restore_slide_placeholder_geometry(slide)
     ensure_content_body_placeholder_geometry(slide)
     ph10 = _content_ph(slide, 10)
     ph10.left = LAYOUT_PH10_LEFT
-    if slide.slide_layout.name == "내지_거버닝 O":
-        ph12 = _placeholder_idx(slide, 12)
-        ph10.top = ph12.top
-    else:
-        ph10.top = TITLE_ROW_TOP
+    # Title stays on the seed title row (above step number); never drop onto governing.
+    title_box = _seed_or_layout_box(slide, 10)
+    ph10.top = title_box[1] if title_box else TITLE_ROW_TOP
     if slide_width:
         max_w = slide_width - LAYOUT_PH10_LEFT - SLIDE_MARGIN_X
         ph10.width = min(int(max_w), int(Inches(10.5)))
@@ -1096,17 +1147,33 @@ def apply_slide_title_layout(slide, slide_width: int, title: str) -> None:
 
 
 def hide_empty_governing_placeholder(slide) -> None:
-    """Clear template governing guide on ph12; never remove ph13 (본문) from the slide."""
+    """Drop empty governing guide text.
+
+    Template / migrate_cmp: governing is ph13 (ph12 is the step number).
+    Legacy JSON ingest: governing may sit in ph12 — clear guide text there only.
+    """
     if slide.slide_layout.name != "내지_거버닝 O":
         return
     guide_hint = "거버닝 메시지"
+    ph12 = ph13 = None
     for shape in slide.placeholders:
-        if shape.placeholder_format.idx != 12:
-            continue
-        text = (shape.text or "").strip()
-        if not text or guide_hint in text:
-            shape.text = ""
+        idx = shape.placeholder_format.idx
+        if idx == 12:
+            ph12 = shape
+        elif idx == 13:
+            ph13 = shape
+
+    t12 = _ph_plain_text(ph12) if ph12 is not None else ""
+    if ph12 is not None and (not t12 or _is_step_number_text(t12)):
+        if ph13 is None:
+            return
+        t13 = _ph_plain_text(ph13)
+        if not t13 or guide_hint in t13:
+            ph13._element.getparent().remove(ph13._element)
         return
+
+    if ph12 is not None and (not t12 or guide_hint in t12):
+        ph12.text = ""
 
 
 def polish_academy_presentation(prs: Presentation) -> None:
