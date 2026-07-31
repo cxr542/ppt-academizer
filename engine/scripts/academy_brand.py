@@ -82,6 +82,14 @@ def load_brand_pack(brand_dir: str) -> dict:
             )
             or {}
         )
+    layout_patterns = {}
+    if (root / "layout-patterns.json").is_file():
+        layout_patterns = (
+            json.loads((root / "layout-patterns.json").read_text(encoding="utf-8")).get(
+                "patterns"
+            )
+            or {}
+        )
     theme = colors.get("theme") or {}
     by_space: dict[str, dict] = {}
     by_ascii: dict[str, dict] = {}
@@ -106,6 +114,7 @@ def load_brand_pack(brand_dir: str) -> dict:
         "by_space": by_space,
         "by_ascii": by_ascii,
         "alias_map": alias_map,
+        "layout_patterns": layout_patterns,
     }
 
 

@@ -29,6 +29,10 @@ from scripts.academy_brand import (  # noqa: E402
     replace_matched_icons,
     resolve_brand_dir,
 )
+from scripts.academy_layout_patterns import (  # noqa: E402
+    apply_card_column_pattern,
+    detect_card_column_count,
+)
 from scripts.academy_template import resolve_academy_template_path  # noqa: E402
 from scripts.deck_migrate_config import (  # noqa: E402
     DeckMigrateConfig,
@@ -1195,22 +1199,15 @@ def migrate_content_body(
     slide_height: int,
     *,
     src_classify_empty: bool = False,
-) -> tuple[bool, bool, int, bool, bool]:
-    """Returns (radial, skip_relayout, rasters_restored, canvas_rescaled, preserve_body_style)."""
+    brand_pack: dict | None = None,
+) -> tuple[bool, bool, int, bool, bool, str | None]:
+    """Returns (radial, skip_relayout, rasters, canvas_rescaled, preserve_style, pattern)."""
     title, governing = extract_header(src_slide, "content")
     gov = governing or ""
     radial = is_radial_diagram_slide(src_slide, slide_width, slide_height)
     src_sw, src_sh = _presentation_dims(src_slide)
     canvas_mismatch = needs_canvas_rescale(src_sw, src_sh, slide_width, slide_height)
     designed_chrome = has_designed_chrome_layout(src_slide)
-    # Use *source* geometry — placeholder heroes may be dropped before dst check.
-    skip_relayout = (
-        radial
-        or canvas_mismatch
-        or designed_chrome
-        or has_hero_body_picture(src_slide, slide_width, slide_height)
-        or count_body_text_columns(src_slide, slide_width) >= 3
-    )
     force_raster = src_classify_empty or count_diagram_rasters(
         src_slide, slide_width, slide_height
     ) >= 1
@@ -1266,6 +1263,29 @@ def migrate_content_body(
             slide, src_sw, src_sh, slide_width, slide_height
         )
         canvas_rescaled = True
+
+    pattern_name = None
+    patterns = (brand_pack or {}).get("layout_patterns") or {}
+    # Equal card rows beat radial-diagram heuristics (2-col label grids false-positive).
+    if patterns and not canvas_rescaled:
+        n = detect_card_column_count(slide, slide_width)
+        if n:
+            pattern_name = apply_card_column_pattern(
+                slide, patterns, slide_width, column_count=n
+            )
+            if pattern_name:
+                radial = False
+
+    # Use *source* geometry — placeholder heroes may be dropped before dst check.
+    skip_relayout = (
+        radial
+        or canvas_mismatch
+        or designed_chrome
+        or bool(pattern_name)
+        or has_hero_body_picture(src_slide, slide_width, slide_height)
+        or count_body_text_columns(src_slide, slide_width) >= 3
+    )
+
     apply_slide_title_layout(slide, slide_width, title or "")
     if not skip_relayout:
         relayout_content_columns(slide, slide_width)
@@ -1273,7 +1293,14 @@ def migrate_content_body(
     if not preserve_body_style:
         apply_academy_body_shape_typography(slide)
     apply_academy_tables_on_slide(slide)
-    return radial, skip_relayout, restored, canvas_rescaled, preserve_body_style
+    return (
+        radial,
+        skip_relayout,
+        restored,
+        canvas_rescaled,
+        preserve_body_style,
+        pattern_name,
+    )
 
 
 def add_toc_after_cover(
@@ -1464,6 +1491,7 @@ def _migrate_cmp_deck_body(
                 restored,
                 canvas_rescaled,
                 preserve_body_style,
+                pattern_name,
             ) = migrate_content_body(
                 slide,
                 src_slide,
@@ -1471,6 +1499,7 @@ def _migrate_cmp_deck_body(
                 sw,
                 sh,
                 src_classify_empty=src_empty,
+                brand_pack=brand_pack,
             )
             if radial:
                 radial_slides.append(slide)
@@ -1478,6 +1507,18 @@ def _migrate_cmp_deck_body(
                 skip_relayout_slides.append(slide)
             if preserve_body_style:
                 preserve_body_style_slides.append(slide)
+            if pattern_name:
+                warnings.append(
+                    {
+                        "code": "LAYOUT_PATTERN",
+                        "level": "info",
+                        "slide": content_step,
+                        "message": (
+                            f"Applied academy {pattern_name} card pattern "
+                            f"on content step {content_step}."
+                        ),
+                    }
+                )
             if canvas_rescaled:
                 canvas_rescaled_slides.append(slide)
                 if not any(w.get("code") == "CANVAS_RESCALED" for w in warnings):
