@@ -126,6 +126,15 @@ def extract_header(src_slide):
     return title, governing
 
 
+_FOOTER_SKIP_LINES = frozenset(
+    {
+        "okestro confidential",
+        "confidential",
+        "internal use only",
+    }
+)
+
+
 def _is_footer_page_number(shape, text: str) -> bool:
     """True for 1–3 digit footer markers (not McKinsey step labels like 01–05)."""
     t = (text or "").strip()
@@ -135,6 +144,11 @@ def _is_footer_page_number(shape, text: str) -> bool:
     left = int(shape.left or 0)
     # Source McKinsey page marks sit bottom-right (~6.3M×10.4M EMU).
     return top >= 5_500_000 and left >= 9_000_000
+
+
+def _is_source_footer_line(text: str) -> bool:
+    """Drop source deck footers; academy template already has its own."""
+    return (text or "").strip().lower() in _FOOTER_SKIP_LINES
 
 
 def is_body_shape(shape, title: str | None, governing: str | None) -> bool:
@@ -181,7 +195,7 @@ def is_body_shape(shape, title: str | None, governing: str | None) -> bool:
     def _header_text_ok(text: str) -> bool:
         if not text:
             return True
-        if _is_footer_page_number(shape, text):
+        if _is_footer_page_number(shape, text) or _is_source_footer_line(text):
             return False
         if _matches_header(text, title) or _matches_header(text, governing):
             return False
