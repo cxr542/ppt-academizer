@@ -22,10 +22,21 @@ if [ ! -f "$DEST" ]; then
     rm -rf /tmp/ppt-academizer-assets
     git clone --depth 1 "$REPO_SSH" /tmp/ppt-academizer-assets
     cp /tmp/ppt-academizer-assets/academy-template.pptx "$DEST"
+    # Brand pack (logos / colors / icon catalog) lives next to the template.
+    BRAND_SRC="/tmp/ppt-academizer-assets/brand"
+    BRAND_DEST="$(dirname "$DEST")/brand"
+    if [ -d "$BRAND_SRC" ]; then
+      rm -rf "$BRAND_DEST"
+      cp -R "$BRAND_SRC" "$BRAND_DEST"
+      echo "ppt-academizer: brand pack ready at $BRAND_DEST"
+    fi
     rm -rf /tmp/ppt-academizer-assets
     echo "ppt-academizer: template ready at $DEST"
   fi
 fi
 
 export TEMPLATE_PPTX="$DEST"
+if [ -z "${BRAND_DIR:-}" ] && [ -d "$(dirname "$DEST")/brand" ]; then
+  export BRAND_DIR="$(dirname "$DEST")/brand"
+fi
 exec "$@"

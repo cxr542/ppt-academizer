@@ -21,6 +21,13 @@ PPT_TEST = Path(__file__).resolve().parent.parent
 if str(PPT_TEST) not in sys.path:
     sys.path.insert(0, str(PPT_TEST))
 
+from scripts.academy_brand import (  # noqa: E402
+    brand_rgb,
+    ensure_brand_pictures,
+    load_brand_pack,
+    normalize_brand_accents,
+    resolve_brand_dir,
+)
 from scripts.academy_template import resolve_academy_template_path  # noqa: E402
 from scripts.deck_migrate_config import (  # noqa: E402
     DeckMigrateConfig,
@@ -986,6 +993,15 @@ def copy_speaker_notes(src_slide, dst_slide) -> None:
         dst_slide.notes_slide.notes_text_frame.text = notes
 
 
+def apply_brand_pack_to_slide(slide, pack: dict | None, *, kind: str) -> None:
+    """Stamp brand logos when missing and normalize non-academy accent colors."""
+    if not pack:
+        return
+    ensure_brand_pictures(slide, pack, kind)
+    if kind == "content":
+        normalize_brand_accents(slide, pack)
+
+
 def fill_cover_from_source(slide, src_slide, cfg: DeckMigrateConfig) -> None:
     title, governing = extract_header(src_slide, "cover")
     cover_text = title or "강의"
@@ -1361,6 +1377,29 @@ def _migrate_cmp_deck_body(
     skip_ooxml_repair: bool,
     skip_powerpoint_repair: bool,
 ) -> tuple[Path, list[dict], int]:
+    global CLR_DK1, CLR_DK2, CLR_ACCENT1
+    brand_dir = resolve_brand_dir(template)
+    brand_pack = load_brand_pack(str(brand_dir)) if brand_dir else None
+    if brand_pack:
+        CLR_DK1 = brand_rgb(brand_pack, "dk1", "#000000")
+        CLR_DK2 = brand_rgb(brand_pack, "dk2", "#44546A")
+        CLR_ACCENT1 = brand_rgb(brand_pack, "accent1", "#006DFF")
+        warnings.append(
+            {
+                "code": "BRAND_PACK",
+                "level": "info",
+                "message": f"Using academy brand pack at {brand_dir}",
+            }
+        )
+    else:
+        warnings.append(
+            {
+                "code": "BRAND_PACK_MISSING",
+                "level": "info",
+                "message": "brand/ pack not found next to template; using built-in theme colors.",
+            }
+        )
+
     sw, sh = int(prs.slide_width), int(prs.slide_height)
     seeds = layout_seed_slides(prs)
     for name in (LAYOUT_COVER, LAYOUT_TOC, LAYOUT_SECTION, LAYOUT_CONTENT):
@@ -1382,6 +1421,7 @@ def _migrate_cmp_deck_body(
             slide = duplicate_slide_from_seed(prs, seeds[LAYOUT_COVER])
             _prepare_slide_for_editing(slide)
             fill_cover_from_source(slide, src_slide, cfg)
+            apply_brand_pack_to_slide(slide, brand_pack, kind="cover")
             copy_speaker_notes(src_slide, slide)
             add_toc_after_cover(prs, seeds, src, src_idx, cfg)
         elif kind == "toc":
@@ -1540,6 +1580,13 @@ def _migrate_cmp_deck_body(
             and slide not in preserve_body_style_slides
         ):
             apply_academy_body_shape_typography(slide)
+    if brand_pack:
+        for slide in prs.slides:
+            name = slide.slide_layout.name
+            if name == LAYOUT_COVER:
+                apply_brand_pack_to_slide(slide, brand_pack, kind="cover")
+            elif name == LAYOUT_CONTENT:
+                apply_brand_pack_to_slide(slide, brand_pack, kind="content")
     slide_count = len(prs.slides)
     if slide_count != expected_slides:
         warnings.append(

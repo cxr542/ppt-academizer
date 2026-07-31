@@ -118,14 +118,17 @@ def _academize_file_response(
 
 @app.get("/health")
 def health():
+    from scripts.academy_brand import resolve_brand_dir
     from scripts.academy_template import resolve_academy_template_path
     from scripts.migrate_version import MIGRATE_ENGINE_VERSION
 
+    tpl_path = None
     try:
-        resolve_academy_template_path()
+        tpl_path = resolve_academy_template_path()
         tpl_ok = True
     except Exception:
         tpl_ok = False
+    brand_dir = resolve_brand_dir(tpl_path)
     return {
         "ok": True,
         "service": "ppt-academizer",
@@ -134,6 +137,8 @@ def health():
         "engine_root": str(ENGINE_ROOT),
         "latest_release_doc": LATEST_RELEASE_DOC,
         "template_configured": tpl_ok,
+        "brand_configured": bool(brand_dir),
+        "brand_dir": str(brand_dir) if brand_dir else None,
         "max_upload_mb": max_upload_mb(),
         "max_upload_bytes": max_upload_bytes(),
         "standard_max_slides": standard_max_slides(),
