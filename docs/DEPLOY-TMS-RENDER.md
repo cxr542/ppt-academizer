@@ -12,9 +12,9 @@ Netlify UI/proxy is **deprecated** for TMS. Point TMS env `PPT_ACADEMIZER_API_UR
 아직 안 한 것:
 
 - [x] Render Web Service `ppt-academizer-api` → `https://ppt-academizer-api.onrender.com`
-- [ ] Env + **template fetch** (아래 §1) → `/health` 에서 `template_configured: true`
-- [ ] EDU-TMS Vercel: `PPT_ACADEMIZER_API_URL=https://ppt-academizer-api.onrender.com`
-- [ ] Prod E2E: `/admin?module=academizer` + `01_k8s_dashboard_lab_lecture.pptx`
+- [x] Env + **template fetch** → `/health` `template_configured: true` (private assets + deploy key)
+- [x] EDU-TMS Vercel: `PPT_ACADEMIZER_API_URL=https://ppt-academizer-api.onrender.com`
+- [x] Prod E2E: health proxy + fixture #1 academize 13장 (2026-07-31)
 - [ ] (선택) real_world fixture 2~5 — `docs/evaluation/real_world_fixture_evaluation.md`
 
 TMS 쪽 SoT·백로그: `edu-team-tms/docs/ppt-academizer-tms.md`, `operations-backlog.md` §4c
