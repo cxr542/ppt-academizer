@@ -11,10 +11,9 @@ Netlify UI/proxy is **deprecated** for TMS. Point TMS env `PPT_ACADEMIZER_API_UR
 
 아직 안 한 것:
 
-- [ ] Render Web Service (Dockerfile / `render.yaml`) from `cxr542/ppt-academizer` `main`
-- [ ] Env: `PPT_ACADEMIZER_SKIP_PP_REPAIR=1`, CORS, **`TEMPLATE_PPTX`** (컨테이너 절대 경로; 템플릿 파일은 git에 넣지 않음)
-- [ ] `GET https://<service>.onrender.com/health` → `ok` + `template_configured: true`
-- [ ] EDU-TMS Vercel: `PPT_ACADEMIZER_API_URL=https://<service>.onrender.com`
+- [x] Render Web Service `ppt-academizer-api` → `https://ppt-academizer-api.onrender.com`
+- [ ] Env + **template fetch** (아래 §1) → `/health` 에서 `template_configured: true`
+- [ ] EDU-TMS Vercel: `PPT_ACADEMIZER_API_URL=https://ppt-academizer-api.onrender.com`
 - [ ] Prod E2E: `/admin?module=academizer` + `01_k8s_dashboard_lab_lecture.pptx`
 - [ ] (선택) real_world fixture 2~5 — `docs/evaluation/real_world_fixture_evaluation.md`
 
@@ -32,11 +31,14 @@ TMS 쪽 SoT·백로그: `edu-team-tms/docs/ppt-academizer-tms.md`, `operations-b
 | `PPT_ACADEMIZER_CORS_ORIGINS` | `https://edu-team-tms-ten.vercel.app,http://localhost:3000` (+ preview origins as needed) |
 | `TEMPLATE_PPTX` | Absolute path **inside the container** to the academy template `.pptx` |
 
-4. Template options:
-   - Mount/secret file into the image at e.g. `/app/templates/academy-2026.pptx` and set `TEMPLATE_PPTX=/app/templates/academy-2026.pptx`
-   - Or bake a copy during a private build (do not commit the template to git)
+4. Template (Render secret files are **≤1 MB total** — the academy `.pptx` is ~6 MB, so do **not** upload the pptx as a secret file):
 
-5. Health: `https://<service>.onrender.com/health` → `ok: true`, `template_configured: true`
+   - Private repo: [`cxr542/ppt-academizer-assets`](https://github.com/cxr542/ppt-academizer-assets) (`academy-template.pptx`)
+   - Secret file on the Render service: filename `ppt_assets_deploy_key` = read-only **deploy key** (SSH private key) for that repo
+   - Env: `TEMPLATE_PPTX=/tmp/academy-template.pptx` (default in Dockerfile)
+   - Boot: `docker/entrypoint.sh` clones the assets repo over SSH and copies the pptx to `TEMPLATE_PPTX`
+
+5. Health: `https://ppt-academizer-api.onrender.com/health` → `ok: true`, `template_configured: true`
 
 ## 2. EDU-TMS (Vercel)
 

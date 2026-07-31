@@ -13,4 +13,5 @@ services:
       - key: PPT_ACADEMIZER_CORS_ORIGINS
         value: "https://edu-team-tms-ten.vercel.app,http://localhost:3000,http://127.0.0.1:3000"
       - key: TEMPLATE_PPTX
-        sync: false
+        value: /tmp/academy-template.pptx
+      # Also upload Secret File `ppt_assets_deploy_key` (deploy key for ppt-academizer-assets).
