@@ -26,6 +26,7 @@ from scripts.academy_brand import (  # noqa: E402
     ensure_brand_pictures,
     load_brand_pack,
     normalize_brand_accents,
+    replace_matched_icons,
     resolve_brand_dir,
 )
 from scripts.academy_template import resolve_academy_template_path  # noqa: E402
@@ -993,13 +994,18 @@ def copy_speaker_notes(src_slide, dst_slide) -> None:
         dst_slide.notes_slide.notes_text_frame.text = notes
 
 
-def apply_brand_pack_to_slide(slide, pack: dict | None, *, kind: str) -> None:
-    """Stamp brand logos when missing and normalize non-academy accent colors."""
+def apply_brand_pack_to_slide(
+    slide, pack: dict | None, *, kind: str, icon_hits: list[str] | None = None
+) -> None:
+    """Stamp brand logos, remap accents, and swap matched icons."""
     if not pack:
         return
     ensure_brand_pictures(slide, pack, kind)
     if kind == "content":
         normalize_brand_accents(slide, pack)
+        replaced = replace_matched_icons(slide, pack)
+        if icon_hits is not None and replaced:
+            icon_hits.extend(replaced)
 
 
 def fill_cover_from_source(slide, src_slide, cfg: DeckMigrateConfig) -> None:
@@ -1580,13 +1586,27 @@ def _migrate_cmp_deck_body(
             and slide not in preserve_body_style_slides
         ):
             apply_academy_body_shape_typography(slide)
+    icon_hits: list[str] = []
     if brand_pack:
         for slide in prs.slides:
             name = slide.slide_layout.name
             if name == LAYOUT_COVER:
                 apply_brand_pack_to_slide(slide, brand_pack, kind="cover")
             elif name == LAYOUT_CONTENT:
-                apply_brand_pack_to_slide(slide, brand_pack, kind="content")
+                apply_brand_pack_to_slide(
+                    slide, brand_pack, kind="content", icon_hits=icon_hits
+                )
+        if icon_hits:
+            warnings.append(
+                {
+                    "code": "BRAND_ICONS_REPLACED",
+                    "level": "info",
+                    "message": (
+                        f"Replaced {len(icon_hits)} icon(s) with academy brand pack: "
+                        + ", ".join(sorted(set(icon_hits))[:12])
+                    ),
+                }
+            )
     slide_count = len(prs.slides)
     if slide_count != expected_slides:
         warnings.append(
