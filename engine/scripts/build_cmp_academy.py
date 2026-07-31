@@ -12,7 +12,7 @@ from pathlib import Path
 
 from pptx import Presentation
 from pptx.dml.color import RGBColor
-from pptx.enum.dml import MSO_COLOR_TYPE
+from pptx.enum.dml import MSO_COLOR_TYPE, MSO_FILL
 from pptx.enum.shapes import MSO_SHAPE_TYPE
 from pptx.enum.text import MSO_ANCHOR, PP_ALIGN
 from pptx.util import Inches, Pt
@@ -709,9 +709,11 @@ def apply_academy_colors_to_text_frame(tf, *, title: bool = False) -> None:
             academy_color_for_run(run, title=title)
 
 
-def apply_academy_fonts_and_colors(slide) -> None:
+def apply_academy_fonts_and_colors(slide, *, placeholders_only: bool = False) -> None:
     for shape in slide.shapes:
         if not shape.has_text_frame:
+            continue
+        if placeholders_only and not shape.is_placeholder:
             continue
         is_title_ph = shape.is_placeholder and shape.placeholder_format.idx == 10
         is_num_ph = shape.is_placeholder and shape.placeholder_format.idx == 12
@@ -738,6 +740,29 @@ def _apply_body_text_frame_style(tf, *, caption: bool = False) -> None:
             run.font.color.rgb = CLR_DK1
             if caption:
                 run.font.bold = True
+
+
+def has_designed_chrome_layout(src_slide) -> bool:
+    """McKinsey-style solid cards / accent bars — keep source type hierarchy."""
+    solid_panels = 0
+    accent_bars = 0
+    for shape in src_slide.shapes:
+        if getattr(shape, "is_placeholder", False):
+            continue
+        try:
+            if shape.fill.type != MSO_FILL.SOLID:
+                continue
+        except Exception:
+            continue
+        w, h = int(shape.width or 0), int(shape.height or 0)
+        text = shape.text.strip() if shape.has_text_frame else ""
+        if text:
+            continue
+        if w >= 1_000_000 and h >= 1_000_000:
+            solid_panels += 1
+        elif w < 250_000 and h > 200_000:
+            accent_bars += 1
+    return solid_panels >= 1 or accent_bars >= 2
 
 
 def apply_academy_body_shape_typography(slide) -> None:
@@ -1148,23 +1173,27 @@ def migrate_content_body(
     slide_height: int,
     *,
     src_classify_empty: bool = False,
-) -> tuple[bool, bool, int, bool]:
-    """Returns (radial, skip_column_relayout, rasters_restored, canvas_rescaled)."""
+) -> tuple[bool, bool, int, bool, bool]:
+    """Returns (radial, skip_relayout, rasters_restored, canvas_rescaled, preserve_body_style)."""
     title, governing = extract_header(src_slide, "content")
     gov = governing or ""
     radial = is_radial_diagram_slide(src_slide, slide_width, slide_height)
     src_sw, src_sh = _presentation_dims(src_slide)
     canvas_mismatch = needs_canvas_rescale(src_sw, src_sh, slide_width, slide_height)
+    designed_chrome = has_designed_chrome_layout(src_slide)
     # Use *source* geometry — placeholder heroes may be dropped before dst check.
     skip_relayout = (
         radial
         or canvas_mismatch
+        or designed_chrome
         or has_hero_body_picture(src_slide, slide_width, slide_height)
         or count_body_text_columns(src_slide, slide_width) >= 3
     )
     force_raster = src_classify_empty or count_diagram_rasters(
         src_slide, slide_width, slide_height
     ) >= 1
+    # Keep McKinsey hierarchy/accent colors; forced 12pt black flattens designed decks.
+    preserve_body_style = canvas_mismatch or designed_chrome
 
     apply_content_header_geometry(slide, slide_width)
 
@@ -1218,12 +1247,11 @@ def migrate_content_body(
     apply_slide_title_layout(slide, slide_width, title or "")
     if not skip_relayout:
         relayout_content_columns(slide, slide_width)
-    apply_academy_fonts_and_colors(slide)
-    # Forced 12pt blows up dense UI mockups, especially after canvas shrink.
-    if not canvas_rescaled:
+    apply_academy_fonts_and_colors(slide, placeholders_only=preserve_body_style)
+    if not preserve_body_style:
         apply_academy_body_shape_typography(slide)
     apply_academy_tables_on_slide(slide)
-    return radial, skip_relayout, restored, canvas_rescaled
+    return radial, skip_relayout, restored, canvas_rescaled, preserve_body_style
 
 
 def add_toc_after_cover(
@@ -1346,6 +1374,7 @@ def _migrate_cmp_deck_body(
     radial_slides: list = []
     skip_relayout_slides: list = []
     canvas_rescaled_slides: list = []
+    preserve_body_style_slides: list = []
     for src_idx, kind in plan:
         src_slide = src.slides[src_idx]
         if kind == "cover":
@@ -1383,7 +1412,13 @@ def _migrate_cmp_deck_body(
                 if sh.shape_type == MSO_SHAPE_TYPE.PICTURE
                 and is_stock_placeholder_picture(sh)
             )
-            radial, skip_relayout, restored, canvas_rescaled = migrate_content_body(
+            (
+                radial,
+                skip_relayout,
+                restored,
+                canvas_rescaled,
+                preserve_body_style,
+            ) = migrate_content_body(
                 slide,
                 src_slide,
                 str(content_step),
@@ -1395,6 +1430,8 @@ def _migrate_cmp_deck_body(
                 radial_slides.append(slide)
             if skip_relayout:
                 skip_relayout_slides.append(slide)
+            if preserve_body_style:
+                preserve_body_style_slides.append(slide)
             if canvas_rescaled:
                 canvas_rescaled_slides.append(slide)
                 if not any(w.get("code") == "CANVAS_RESCALED" for w in warnings):
@@ -1455,7 +1492,10 @@ def _migrate_cmp_deck_body(
         radial = slide in radial_slides
         skip_relayout = slide in skip_relayout_slides
         canvas_rescaled = slide in canvas_rescaled_slides
-        bac.polish_slide(slide, skip_body_dedup=radial or canvas_rescaled)
+        preserve_body_style = slide in preserve_body_style_slides
+        bac.polish_slide(
+            slide, skip_body_dedup=radial or canvas_rescaled or preserve_body_style
+        )
         if slide.slide_layout.name == LAYOUT_CONTENT:
             title = ""
             for sh in slide.placeholders:
@@ -1463,10 +1503,12 @@ def _migrate_cmp_deck_body(
                     title = normalize_slide_title(sh.text or "")
             hide_empty_governing_placeholder(slide)
             if not radial:
-                apply_academy_fonts_and_colors(slide)
-                if not canvas_rescaled:
+                apply_academy_fonts_and_colors(
+                    slide, placeholders_only=preserve_body_style
+                )
+                if not preserve_body_style:
                     apply_academy_body_shape_typography(slide)
-        if not radial and not canvas_rescaled:
+        if not radial and not canvas_rescaled and not preserve_body_style:
             bac.fit_body_shapes(slide, sw, sh)
         if slide.slide_layout.name == LAYOUT_CONTENT and not skip_relayout:
             relayout_content_columns(slide, sw)
@@ -1482,15 +1524,21 @@ def _migrate_cmp_deck_body(
                     t = normalize_slide_title(sh.text or "")
             apply_slide_title_layout(slide, sw, t)
             if not radial:
-                apply_academy_fonts_and_colors(slide)
-                if not canvas_rescaled:
+                apply_academy_fonts_and_colors(
+                    slide, placeholders_only=preserve_body_style
+                )
+                if not preserve_body_style:
                     apply_academy_body_shape_typography(slide)
 
     from scripts.academy_deck_build_lib import fix_open_in_slide_view, polish_academy_presentation
 
     polish_academy_presentation(prs)
     for slide in prs.slides:
-        if slide.slide_layout.name == LAYOUT_CONTENT and slide not in canvas_rescaled_slides:
+        if (
+            slide.slide_layout.name == LAYOUT_CONTENT
+            and slide not in canvas_rescaled_slides
+            and slide not in preserve_body_style_slides
+        ):
             apply_academy_body_shape_typography(slide)
     slide_count = len(prs.slides)
     if slide_count != expected_slides:
