@@ -33,12 +33,12 @@ TMS 쪽 SoT·백로그: `edu-team-tms/docs/ppt-academizer-tms.md`, `operations-b
 
 4. Template (Render secret files are **≤1 MB total** — the academy `.pptx` is ~6 MB, so do **not** upload the pptx as a secret file):
 
-   - Private repo: [`cxr542/ppt-academizer-assets`](https://github.com/cxr542/ppt-academizer-assets) (`academy-template.pptx`)
+   - Private repo: [`cxr542/ppt-academizer-assets`](https://github.com/cxr542/ppt-academizer-assets) (`academy-template.pptx` + `brand/`)
    - Secret file on the Render service: filename `ppt_assets_deploy_key` = read-only **deploy key** (SSH private key) for that repo
    - Env: `TEMPLATE_PPTX=/tmp/academy-template.pptx` (default in Dockerfile)
-   - Boot: `docker/entrypoint.sh` clones the assets repo over SSH and copies the pptx to `TEMPLATE_PPTX`
+   - Boot: `docker/entrypoint.sh` clones the assets repo over SSH, copies the pptx to `TEMPLATE_PPTX`, and copies `brand/` next to it (`BRAND_DIR`)
 
-5. Health: `https://ppt-academizer-api.onrender.com/health` → `ok: true`, `template_configured: true`
+5. Health: `https://ppt-academizer-api.onrender.com/health` → `ok: true`, `template_configured: true`, `brand_configured: true`
 
 ## 2. EDU-TMS (Vercel)
 
