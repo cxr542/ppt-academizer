@@ -11,7 +11,16 @@ import tempfile
 import zipfile
 from pathlib import Path
 
-OFFICE_EXT_URIS = ("FF2B5EF4", "DCECCB84", "BB962C8B", "C183EC19", "B7FDDCBA")
+# GUID fragments inside a:ext/@uri that Mac PowerPoint often rejects (Repair dialog).
+OFFICE_EXT_URIS = (
+    "FF2B5EF4",
+    "DCECCB84",
+    "BB962C8B",
+    "C183EC19",
+    "B7FDDCBA",
+    "96DAC541",  # asvg:svgBlip — PNG media with SVG extension triggers Repair
+    "28A0092B",  # a14:useLocalDpi
+)
 P_NS = "http://schemas.openxmlformats.org/presentationml/2006/main"
 A_NS = "http://schemas.openxmlformats.org/drawingml/2006/main"
 
@@ -60,17 +69,32 @@ def _strip_office_extensions_xml(data: bytes) -> bytes:
     remove: list = []
     for el in root.iter():
         tag = el.tag.split("}")[-1]
-        if tag in ("creationId", "custDataLst"):
+        if tag in ("creationId", "custDataLst", "svgBlip"):
             remove.append(el)
             continue
         if tag == "ext":
             uri = el.get("uri") or ""
             if any(marker in uri for marker in OFFICE_EXT_URIS):
                 remove.append(el)
+                continue
+            # Defense: any ext that nests asvg:* (even if URI list drifts).
+            if any(
+                (c.tag.split("}")[-1] if "}" in str(c.tag) else str(c.tag)) == "svgBlip"
+                or "SVG/main" in str(c.tag)
+                for c in el
+            ):
+                remove.append(el)
     for el in remove:
         parent = el.getparent()
         if parent is not None:
             parent.remove(el)
+    # Drop empty extLst left behind after stripping SVG / office extensions.
+    for el in list(root.iter()):
+        tag = el.tag.split("}")[-1] if "}" in str(el.tag) else str(el.tag)
+        if tag == "extLst" and len(el) == 0:
+            parent = el.getparent()
+            if parent is not None:
+                parent.remove(el)
     return etree.tostring(
         root, xml_declaration=True, encoding="UTF-8", standalone=True
     )
