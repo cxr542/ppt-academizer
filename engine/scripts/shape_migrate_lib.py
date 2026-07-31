@@ -126,6 +126,17 @@ def extract_header(src_slide):
     return title, governing
 
 
+def _is_footer_page_number(shape, text: str) -> bool:
+    """True for 1–3 digit footer markers (not McKinsey step labels like 01–05)."""
+    t = (text or "").strip()
+    if not (t.isdigit() and len(t) <= 3):
+        return False
+    top = int(shape.top or 0)
+    left = int(shape.left or 0)
+    # Source McKinsey page marks sit bottom-right (~6.3M×10.4M EMU).
+    return top >= 5_500_000 and left >= 9_000_000
+
+
 def is_body_shape(shape, title: str | None, governing: str | None) -> bool:
     if shape.name in SKIP_SHAPE_NAMES:
         return False
@@ -134,6 +145,7 @@ def is_body_shape(shape, title: str | None, governing: str | None) -> bool:
 
     st = shape.shape_type
     top = int(shape.top or 0)
+    left = int(shape.left or 0)
     w, h = int(shape.width or 0), int(shape.height or 0)
 
     # Pictures / lines / groups / tables: do not drop large diagrams in the header band.
@@ -147,9 +159,15 @@ def is_body_shape(shape, title: str | None, governing: str | None) -> bool:
             return w >= 1_200_000 or h >= 900_000
         return True
 
-    # Google-export thin vertical rules beside the title strip.
-    if st == MSO_SHAPE_TYPE.AUTO_SHAPE and w < 250_000 and h > 200_000:
-        return True
+    # Thin vertical accent rules (AUTO_SHAPE or solid TEXT_BOX chrome).
+    if st in (MSO_SHAPE_TYPE.AUTO_SHAPE, MSO_SHAPE_TYPE.TEXT_BOX) and w < 250_000 and h > 200_000:
+        if st == MSO_SHAPE_TYPE.AUTO_SHAPE:
+            return True
+        try:
+            if shape.fill.type == MSO_FILL.SOLID:
+                return True
+        except Exception:
+            pass
 
     def _matches_header(text: str, header: str | None) -> bool:
         if not header:
@@ -163,7 +181,7 @@ def is_body_shape(shape, title: str | None, governing: str | None) -> bool:
     def _header_text_ok(text: str) -> bool:
         if not text:
             return True
-        if text.isdigit() and len(text) <= 3:
+        if _is_footer_page_number(shape, text):
             return False
         if _matches_header(text, title) or _matches_header(text, governing):
             return False
@@ -177,20 +195,30 @@ def is_body_shape(shape, title: str | None, governing: str | None) -> bool:
 
     def _is_filled_chrome() -> bool:
         """McKinsey/card decks use empty solid textboxes as colored panels."""
-        return _has_solid_fill() and w >= 200_000 and h >= 200_000
+        return _has_solid_fill() and w >= 100_000 and h >= 200_000
 
     # Tall/wide panels often start under the title row (UI mockups, side rails).
     # Keep them when they clearly extend into the body band.
     if top < HEADER_BOTTOM_EMU:
         bottom = top + max(h, 0)
         extends_into_body = bottom > HEADER_BOTTOM_EMU + 400_000
-        if st in (MSO_SHAPE_TYPE.AUTO_SHAPE, MSO_SHAPE_TYPE.TEXT_BOX) and extends_into_body:
+        if st in (MSO_SHAPE_TYPE.AUTO_SHAPE, MSO_SHAPE_TYPE.TEXT_BOX):
             text = shape.text.strip() if shape.has_text_frame else ""
             if not _header_text_ok(text):
                 return False
-            if h >= 1_200_000 or w >= 2_800_000 or (text and h >= 350_000):
-                return True
-            if not text and _is_filled_chrome():
+            if extends_into_body:
+                if h >= 1_200_000 or w >= 2_800_000 or (text and h >= 350_000):
+                    return True
+                if not text and _is_filled_chrome():
+                    return True
+            # Compact section labels just under the governing strip (e.g. Control Plane · Master).
+            if (
+                text
+                and top >= 850_000
+                and h <= 450_000
+                and w < 8_000_000
+                and left < 10_000_000
+            ):
                 return True
         return False
 
