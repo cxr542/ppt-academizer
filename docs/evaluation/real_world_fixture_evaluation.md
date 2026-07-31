@@ -12,7 +12,7 @@
 
 | 우선순위 | 테스트용 파일명 | 원본 파일명 | 유형 | 테스트 목적 |
 |---:|---|---|---|---|
-| 1 | `01_k8s_dashboard_lab_lecture.pptx` | `k8s_dashboard_lab_lecture.pptx` | 실습 강의안형 PPT | 학습 목표, 실습 흐름, YAML, 체크리스트, 강사용 멘트가 실제 아카데미 강의안 형태로 유지되는지 확인한다. |
+| 1 | `01_k8s_dashboard_lab_lecture.pptx` | `k8s_dashboard_lab_lecture.pptx` | 실습 강의안형 PPT | 학습 목표, 실습 흐름, YAML, 체크리스트, 강사용 멘트가 실제 아카데미 강의안 형태로 유지되는지 확인한다. **로컬 API 스모크 통과 (2026-07-23, 13장 academize).** |
 | 2 | `02_cmp_core_technology.pptx` | `클라우드 구현기술(CMP)_v1.0_수정요청.pptx` | 기술 개념 설명형 PPT | 개념 정의, 비유 설명, 기대효과 표의 제목/본문/표 구조가 안정적으로 유지되는지 확인한다. |
 | 3 | `03_vmware_winback_strategy_report.pptx` | `오케스트로 VMware 윈백 시장 주도 전략 보고.pptx` | 전략 보고서형 PPT | 큰 제목, 숫자 지표, 로드맵, 전략 메시지가 강의안 템플릿으로 변환 가능한지 확인한다. |
 | 4 | `04_academy_registration_page_plan.pptx` | `[기획안] 오케스트로 아카데미 교육신청 페이지_260128 v1.pptx` | 기획/요구사항형 PPT | 긴 텍스트, 표, CTA 설명, 관리자 요구사항, 폼 검증 문구가 읽을 수 있게 유지되는지 확인한다. |
