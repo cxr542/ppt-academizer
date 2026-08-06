@@ -51,6 +51,8 @@ def _is_cover_like(blocks: list[dict]) -> bool:
 def _is_toc_like(blocks: list[dict]) -> bool:
     if not blocks:
         return False
+    if any(b["len"] > 120 for b in blocks):
+        return False
     merged = "\n".join(b["text"] for b in blocks)
     return _numbered_toc_lines(merged) is not None
 
