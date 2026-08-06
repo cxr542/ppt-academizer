@@ -8,6 +8,7 @@ import re
 from pptx import Presentation
 
 from scripts.pptx_ingest import iter_shapes, slide_notes_text, slide_text_blocks
+from scripts.slide_classifier_v2 import analyze_slide_layout
 
 
 _CHAPTER_LINE_RE = re.compile(r"^\d+[\.\)]\s+\S")
@@ -127,8 +128,9 @@ def extract_front_matter(
     s0 = prs.slides[0]
     b0 = slide_text_blocks(s0)
     layout0 = s0.slide_layout.name
+    layout_info0 = analyze_slide_layout(s0)
 
-    if layout0 in ("2_표지", "표지") or _is_cover_like(b0):
+    if layout0 in ("2_표지", "표지") or layout_info0["layout"] == "cover":
         if b0:
             cover = _compose_cover_text(b0)
             specs.append(
@@ -157,8 +159,9 @@ def extract_front_matter(
         b1 = slide_text_blocks(s1)
         layout1 = s1.slide_layout.name
         merged1 = "\n".join(x["text"] for x in b1)
+        layout_info1 = analyze_slide_layout(s1)
 
-        if layout1 in ("목차", "TOC") or _is_toc_like(b1):
+        if layout1 in ("목차", "TOC") or layout_info1["layout"] == "toc":
             toc_lines = _numbered_toc_lines(merged1) or [x["text"] for x in b1]
             toc_text = "\n".join(toc_lines)
             specs.append(

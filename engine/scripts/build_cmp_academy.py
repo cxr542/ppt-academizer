@@ -38,7 +38,8 @@ from scripts.deck_migrate_config import (  # noqa: E402
     DeckMigrateConfig,
     migrate_config_for_source,
 )
-from scripts.pptx_ingest import iter_shapes, slide_notes_text  # noqa: E402
+from scripts.pptx_ingest import iter_shapes, iter_shapes_abs, slide_notes_text  # noqa: E402
+from scripts.slide_classifier_v2 import analyze_slide_layout  # noqa: E402
 
 import scripts.academy_deck_build_lib as adl  # noqa: E402
 
@@ -206,29 +207,15 @@ def classify_slide(
     part_cover_indices: frozenset[int] | None = None,
 ) -> str:
     covers = part_cover_indices if part_cover_indices is not None else frozenset({0, 13})
-    texts = [
-        (int(sh.top or 0), sh.text.strip())
-        for sh, depth in iter_shapes(slide.shapes)
-        if depth == 0 and sh.has_text_frame and sh.text.strip()
-    ]
-    texts.sort()
-    if not texts:
-        # Full-bleed visual slides (charts/photos) are content, not blanks.
-        return "content" if _slide_has_picture(slide) else "empty"
-    first_top, first_text = texts[0]
     if index in covers:
         return "cover"
-    first_line = first_text.replace("\x0b", " ").split("\n")[0].strip()
-    if first_line in _TOC_TITLE_MARKERS:
-        return "toc"
-    if (
-        len(texts) <= 3
-        and first_top > 2_000_000
-        and len(first_text) < 80
-        and first_text == first_text.upper()
-    ):
-        return "section"
-    return "content"
+
+    layout_info = analyze_slide_layout(slide)
+    layout = layout_info["layout"]
+
+    if layout == "empty" and _slide_has_picture(slide):
+        return "content"
+    return layout
 
 
 _GOV_METAPHOR = re.compile(r"(처럼|듯이|하듯|듯,|듯 )")
@@ -273,49 +260,19 @@ def _pick_content_governing(
 
 
 def extract_header(src_slide, kind: str) -> tuple[str | None, str | None]:
-    texts = [
-        (int(sh.top or 0), sh.text.strip())
-        for sh, depth in iter_shapes(src_slide.shapes)
-        if depth == 0 and sh.has_text_frame and sh.text.strip()
-    ]
-    texts.sort()
-    if not texts:
-        return None, None
-    if kind == "cover":
-        title = texts[0][1].replace("\n", " ").strip()
-        governing = texts[1][1].split("\n")[0].strip() if len(texts) > 1 else None
-        return title, governing
-    if kind == "section":
-        # Prefer prose title over bare chapter numbers ("01").
-        for _top, text in texts:
-            line = text.replace("\x0b", " ").split("\n")[0].strip()
-            if not line or _is_step_number_line(line):
-                continue
-            if re.fullmatch(r"\d{1,2}", line):
-                continue
-            return line, None
-        return texts[0][1].split("\n")[0].strip(), None
-    header_candidates: list[tuple[int, int, str]] = []
-    for top, text in texts:
-        if top > HEADER_TITLE_TOP_MAX:
-            continue
-        line = text.replace("\x0b", " ").split("\n")[0].strip()
-        if not line or len(line) > TITLE_MAX_CHARS or _is_step_number_line(line):
-            continue
-        header_candidates.append((top, len(line), line))
-    title: str | None = None
-    if header_candidates:
-        header_candidates.sort(key=lambda c: (c[0], c[1]))
-        title = header_candidates[0][2]
-    else:
-        for _top, text in texts:
-            line = text.replace("\x0b", " ").split("\n")[0].strip()
-            if len(line) <= TITLE_MAX_CHARS and not _is_step_number_line(line):
-                title = line
-                break
-        if title is None:
-            title = texts[0][1].replace("\x0b", " ").split("\n")[0].strip()
-    return title, _pick_content_governing(texts, title)
+    layout_info = analyze_slide_layout(src_slide)
+    title = layout_info["title"]
+    gov = layout_info["governing"]
+
+    if not title and layout_info["blocks"]:
+        title = _normalize_header_line(layout_info["blocks"][0]["text"])
+
+    if title:
+        title = _normalize_header_line(title)
+    if gov:
+        gov = _normalize_header_line(gov)
+
+    return title, gov
 
 
 def build_slide_plan(
