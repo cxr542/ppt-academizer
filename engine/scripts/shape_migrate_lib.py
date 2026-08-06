@@ -378,7 +378,7 @@ def _copy_fill(dst_shape, src_shape) -> None:
                     dst.fore_color.brightness = sc.brightness
             elif sc.rgb:
                 dst.fore_color.rgb = sc.rgb
-        elif src.type == MSO_FILL.BACKGROUND:
+        elif src.type in (MSO_FILL.BACKGROUND, None):
             dst.background()
     except Exception:
         pass

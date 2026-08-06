@@ -208,8 +208,8 @@ def classify_slide(
     covers = part_cover_indices if part_cover_indices is not None else frozenset({0, 13})
     texts = [
         (int(sh.top or 0), sh.text.strip())
-        for sh, _depth in iter_shapes(slide.shapes)
-        if sh.has_text_frame and sh.text.strip()
+        for sh, depth in iter_shapes(slide.shapes)
+        if depth == 0 and sh.has_text_frame and sh.text.strip()
     ]
     texts.sort()
     if not texts:
@@ -275,8 +275,8 @@ def _pick_content_governing(
 def extract_header(src_slide, kind: str) -> tuple[str | None, str | None]:
     texts = [
         (int(sh.top or 0), sh.text.strip())
-        for sh, _depth in iter_shapes(src_slide.shapes)
-        if sh.has_text_frame and sh.text.strip()
+        for sh, depth in iter_shapes(src_slide.shapes)
+        if depth == 0 and sh.has_text_frame and sh.text.strip()
     ]
     texts.sort()
     if not texts:
