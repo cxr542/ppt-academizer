@@ -12,11 +12,29 @@
 
 | 우선순위 | 테스트용 파일명 | 원본 파일명 | 유형 | 테스트 목적 |
 |---:|---|---|---|---|
-| 1 | `01_k8s_dashboard_lab_lecture.pptx` | `k8s_dashboard_lab_lecture.pptx` | 실습 강의안형 PPT | 학습 목표, 실습 흐름, YAML, 체크리스트, 강사용 멘트가 실제 아카데미 강의안 형태로 유지되는지 확인한다. |
+| 1 | `01_k8s_dashboard_lab_lecture.pptx` | `k8s_dashboard_lab_lecture.pptx` | 실습 강의안형 PPT | 학습 목표, 실습 흐름, YAML, 체크리스트, 강사용 멘트가 실제 아카데미 강의안 형태로 유지되는지 확인한다. **로컬 API 스모크 통과 (2026-07-23, 13장 academize).** |
 | 2 | `02_cmp_core_technology.pptx` | `클라우드 구현기술(CMP)_v1.0_수정요청.pptx` | 기술 개념 설명형 PPT | 개념 정의, 비유 설명, 기대효과 표의 제목/본문/표 구조가 안정적으로 유지되는지 확인한다. |
 | 3 | `03_vmware_winback_strategy_report.pptx` | `오케스트로 VMware 윈백 시장 주도 전략 보고.pptx` | 전략 보고서형 PPT | 큰 제목, 숫자 지표, 로드맵, 전략 메시지가 강의안 템플릿으로 변환 가능한지 확인한다. |
-| 4 | `04_academy_registration_page_plan.pptx` | `[기획안] 오케스트로 아카데미 교육신청 페이지_260128 v1.pptx` | 기획/요구사항형 PPT | 긴 텍스트, 표, CTA 설명, 관리자 요구사항, 폼 검증 문구가 읽을 수 있게 유지되는지 확인한다. |
+| 4 | `04_academy_registration_page_plan.pptx` | `[기획안] 오케스트로 아카데미 교육신청 페이지_260128 v1.pptx` | 기획/요구사항형 PPT | 긴 텍스트, 표, CTA 설명, 관리자 요구사항, 폼 검증 문구가 읽을 수 있게 유지되는지 확인한다. **로컬 보관본은 `260123 v1`을 사용 (2026-07-31).** |
 | 5 | `05_contrabass_base_technology.pptx` | `CONTRABASS 기반기술@260504_수정 요청.pptx` | 복합 기술 발표형 PPT | Quorum, Galera, RAFT, OpenInfra 등 다중 기술 섹션과 긴 자료, 표, 이미지 출처가 깨지지 않는지 확인한다. |
+
+## 자동 smoke 결과 (2026-07-31)
+
+`scripts/evaluate_real_world_fixtures.py` — 5/5 변환·재오픈 성공. 산출물: `outputs/evaluation/artifacts/`.
+
+| Fixture | 원본 장 | 결과 장 | Warnings | 비고 |
+|---|---:|---:|---:|---|
+| 01 k8s lab | 13 | 13 | 4 | YAML 검수 warn |
+| 02 CMP | 10 | 10 | 3 | 도형 이식(§7) |
+| 03 VMware 윈백 | 14 | 14 | 4 | 빈 본문 슬라이드(원본 5장) |
+| 04 교육신청 기획 | 10 | 10 | 3 | 도형 이식(§7) |
+| 05 CONTRABASS 기반기술 | 28 | 28 | 5 | 빈 본문(원본 23·24장) |
+
+공통 이슈(자동):
+- `engine/office/validate.py` 의 `match` 구문이 **Python &lt; 3.10** 환경에서 `SyntaxError` warning으로 남음 (변환 자체는 성공).
+- 소형 덱에도 「대용량 모드」 warning이 붙는 경우가 있음 → 문구/조건 개선 후보.
+
+수동 20점 평가표는 아직 미기입 — PowerPoint로 `outputs/evaluation/artifacts/*/academy-*.pptx` 열어 점수 기입.
 
 ## 수동 테스트 절차
 

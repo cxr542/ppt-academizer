@@ -12,7 +12,7 @@ from pathlib import Path
 
 from pptx import Presentation
 from pptx.dml.color import RGBColor
-from pptx.enum.dml import MSO_COLOR_TYPE
+from pptx.enum.dml import MSO_COLOR_TYPE, MSO_FILL
 from pptx.enum.shapes import MSO_SHAPE_TYPE
 from pptx.enum.text import MSO_ANCHOR, PP_ALIGN
 from pptx.util import Inches, Pt
@@ -21,6 +21,18 @@ PPT_TEST = Path(__file__).resolve().parent.parent
 if str(PPT_TEST) not in sys.path:
     sys.path.insert(0, str(PPT_TEST))
 
+from scripts.academy_brand import (  # noqa: E402
+    brand_rgb,
+    ensure_brand_pictures,
+    load_brand_pack,
+    normalize_brand_accents,
+    replace_matched_icons,
+    resolve_brand_dir,
+)
+from scripts.academy_layout_patterns import (  # noqa: E402
+    apply_card_column_pattern,
+    detect_card_column_count,
+)
 from scripts.academy_template import resolve_academy_template_path  # noqa: E402
 from scripts.deck_migrate_config import (  # noqa: E402
     DeckMigrateConfig,
@@ -162,6 +174,32 @@ def _hangul_ratio(text: str) -> float:
     return len(_HANGUL.findall(compact)) / len(compact)
 
 
+def _slide_has_picture(slide) -> bool:
+    return any(sh.shape_type == MSO_SHAPE_TYPE.PICTURE for sh in slide.shapes)
+
+
+def is_picture_only_slide(slide) -> bool:
+    """True when the slide has pictures and no non-empty text (full-frame visual)."""
+    has_pic = False
+    for sh in slide.shapes:
+        if sh.has_text_frame and (sh.text or "").strip():
+            return False
+        if sh.shape_type == MSO_SHAPE_TYPE.PICTURE:
+            has_pic = True
+    return has_pic
+
+
+_TOC_TITLE_MARKERS = frozenset(
+    {
+        "목차",
+        "CONTENTS",
+        "Contents",
+        "Table of Contents",
+        "TABLE OF CONTENTS",
+    }
+)
+
+
 def classify_slide(
     slide,
     index: int,
@@ -174,13 +212,15 @@ def classify_slide(
         if sh.has_text_frame and sh.text.strip()
     ]
     texts.sort()
-    if len(slide.shapes) <= 1 and not texts:
-        return "empty"
     if not texts:
-        return "empty"
+        # Full-bleed visual slides (charts/photos) are content, not blanks.
+        return "content" if _slide_has_picture(slide) else "empty"
     first_top, first_text = texts[0]
     if index in covers:
         return "cover"
+    first_line = first_text.replace("\x0b", " ").split("\n")[0].strip()
+    if first_line in _TOC_TITLE_MARKERS:
+        return "toc"
     if (
         len(texts) <= 3
         and first_top > 2_000_000
@@ -189,6 +229,47 @@ def classify_slide(
     ):
         return "section"
     return "content"
+
+
+_GOV_METAPHOR = re.compile(r"(처럼|듯이|하듯|듯,|듯 )")
+_GOV_SKIP_PREFIXES = ("개념 정의", "가치:", "가치 ：", "가치 ")
+
+
+def _normalize_header_line(text: str) -> str:
+    return text.replace("\x0b", " ").replace("\n", " ").strip()
+
+
+def _pick_content_governing(
+    texts: list[tuple[int, str]], title: str | None
+) -> str | None:
+    """Pick ph13 governing: metaphor line, else McKinsey-style header kicker."""
+    gov_max = int(getattr(bac, "GOV_MAX_LEN", 96))
+    ranked: list[tuple[int, int, str]] = []
+    header_kickers: list[str] = []
+    for top, text in texts:
+        line = _normalize_header_line(text)
+        if not line or line == title or _is_step_number_line(line):
+            continue
+        if any(line.startswith(p) for p in _GOV_SKIP_PREFIXES):
+            continue
+        if len(line) < 12 or len(line) > gov_max:
+            continue
+        if top <= HEADER_TITLE_TOP_MAX:
+            header_kickers.append(line)
+        score = 0
+        if _GOV_METAPHOR.search(line):
+            score += 10
+        if line.endswith(("습니다.", "합니다.", "합니다")) or "습니다" in line:
+            score += 2
+        if score:
+            ranked.append((score, len(line), line))
+    if ranked:
+        ranked.sort(key=lambda c: (-c[0], -c[1]))
+        best_score, _len, best = ranked[0]
+        if best_score >= 10:
+            return best
+    # Action-title decks: second header-band line is the governing kicker.
+    return header_kickers[0] if header_kickers else None
 
 
 def extract_header(src_slide, kind: str) -> tuple[str | None, str | None]:
@@ -205,6 +286,14 @@ def extract_header(src_slide, kind: str) -> tuple[str | None, str | None]:
         governing = texts[1][1].split("\n")[0].strip() if len(texts) > 1 else None
         return title, governing
     if kind == "section":
+        # Prefer prose title over bare chapter numbers ("01").
+        for _top, text in texts:
+            line = text.replace("\x0b", " ").split("\n")[0].strip()
+            if not line or _is_step_number_line(line):
+                continue
+            if re.fullmatch(r"\d{1,2}", line):
+                continue
+            return line, None
         return texts[0][1].split("\n")[0].strip(), None
     header_candidates: list[tuple[int, int, str]] = []
     for top, text in texts:
@@ -214,14 +303,19 @@ def extract_header(src_slide, kind: str) -> tuple[str | None, str | None]:
         if not line or len(line) > TITLE_MAX_CHARS or _is_step_number_line(line):
             continue
         header_candidates.append((top, len(line), line))
+    title: str | None = None
     if header_candidates:
         header_candidates.sort(key=lambda c: (c[0], c[1]))
-        return header_candidates[0][2], None
-    for top, text in texts:
-        line = text.replace("\x0b", " ").split("\n")[0].strip()
-        if len(line) <= TITLE_MAX_CHARS and not _is_step_number_line(line):
-            return line, None
-    return texts[0][1].replace("\x0b", " ").split("\n")[0].strip(), None
+        title = header_candidates[0][2]
+    else:
+        for _top, text in texts:
+            line = text.replace("\x0b", " ").split("\n")[0].strip()
+            if len(line) <= TITLE_MAX_CHARS and not _is_step_number_line(line):
+                title = line
+                break
+        if title is None:
+            title = texts[0][1].replace("\x0b", " ").split("\n")[0].strip()
+    return title, _pick_content_governing(texts, title)
 
 
 def build_slide_plan(
@@ -372,21 +466,67 @@ def is_raster_heavy_slide(src_slide, slide_width: int, slide_height: int) -> boo
     return is_image_primary_slide(src_slide, slide_width, slide_height)
 
 
+_STOCK_PLACEHOLDER_DIMS = frozenset(
+    {
+        (400, 400),
+        (600, 400),
+        (400, 600),
+        (640, 480),
+        (480, 640),
+        (800, 600),
+        (600, 800),
+    }
+)
+
+
+def is_stock_placeholder_picture(shape) -> bool:
+    """Detect Google-export stubs (solid black / classic 600×400 placeholders)."""
+    if shape.shape_type != MSO_SHAPE_TYPE.PICTURE:
+        return False
+    try:
+        from PIL import Image
+        import io
+
+        blob = shape.image.blob
+        im = Image.open(io.BytesIO(blob)).convert("RGB")
+    except Exception:
+        return False
+    w, h = im.size
+    if w <= 64 and h <= 64:
+        return False
+    sample = im.resize((48, 48))
+    colors = len(set(sample.getdata()))
+    if colors <= 4:
+        return True
+    if (w, h) in _STOCK_PLACEHOLDER_DIMS and colors < 200 and len(blob) < 40_000:
+        return True
+    return False
+
+
 def should_drop_body_picture(
     shape,
     slide_width: int,
     slide_height: int,
     *,
     permissive_raster: bool,
+    keep_full_frame_image: bool = False,
 ) -> bool:
-    """§6.7 — on diagram-heavy slides only drop slide backgrounds."""
+    """§6.7 — on diagram-heavy slides only drop slide backgrounds.
+
+    ``keep_full_frame_image``: picture-only slides where the full-frame image *is*
+    the content (e.g. VMware winback chart page) — do not drop it as a background.
+    """
     if shape.shape_type != MSO_SHAPE_TYPE.PICTURE:
         return False
-    if permissive_raster:
-        return is_slide_background_picture(shape, slide_width, slide_height)
-    if is_slide_background_picture(shape, slide_width, slide_height):
+    if is_stock_placeholder_picture(shape):
         return True
-    if is_full_bleed_picture(shape, slide_width, slide_height):
+    is_bg = is_slide_background_picture(shape, slide_width, slide_height)
+    is_bleed = is_full_bleed_picture(shape, slide_width, slide_height)
+    if keep_full_frame_image and (is_bg or is_bleed):
+        return False
+    if permissive_raster:
+        return is_bg
+    if is_bg or is_bleed:
         return True
     if DROP_CARD_PANEL_PICTURES and is_card_panel_picture(shape, slide_height):
         return True
@@ -441,13 +581,16 @@ def sync_raster_diagram_assets(
     dst_n = count_diagram_rasters(dst_slide, slide_width, slide_height)
     if src_n == 0:
         return 0
+    keep_full = is_picture_only_slide(src_slide)
     permissive = (
         force_permissive
         or src_classify_empty
+        or keep_full
         or is_raster_heavy_slide(src_slide, slide_width, slide_height)
         or is_image_primary_slide(src_slide, slide_width, slide_height)
     )
-    if dst_n >= src_n and not (src_classify_empty and src_n > 0):
+    # Picture-only full-frame slides report src_n=0 (image counted as background).
+    if not keep_full and dst_n >= src_n and not (src_classify_empty and src_n > 0):
         return 0
 
     id_remap: dict[str, str] = {}
@@ -462,6 +605,7 @@ def sync_raster_diagram_assets(
             slide_width,
             slide_height,
             permissive_raster=permissive,
+            keep_full_frame_image=keep_full,
         ):
             continue
         if skip_connectors and (
@@ -523,12 +667,17 @@ def copy_body_shapes_filtered(
     skip_connectors: bool = False,
 ) -> dict[str, str]:
     permissive = is_raster_heavy_slide(src_slide, slide_width, slide_height)
+    keep_full = is_picture_only_slide(src_slide)
     id_remap: dict[str, str] = {}
     for shape in src_slide.shapes:
         if not bac.is_body_shape(shape, title, governing):
             continue
         if should_drop_body_picture(
-            shape, slide_width, slide_height, permissive_raster=permissive
+            shape,
+            slide_width,
+            slide_height,
+            permissive_raster=permissive,
+            keep_full_frame_image=keep_full,
         ):
             continue
         if skip_connectors and (
@@ -572,9 +721,11 @@ def apply_academy_colors_to_text_frame(tf, *, title: bool = False) -> None:
             academy_color_for_run(run, title=title)
 
 
-def apply_academy_fonts_and_colors(slide) -> None:
+def apply_academy_fonts_and_colors(slide, *, placeholders_only: bool = False) -> None:
     for shape in slide.shapes:
         if not shape.has_text_frame:
+            continue
+        if placeholders_only and not shape.is_placeholder:
             continue
         is_title_ph = shape.is_placeholder and shape.placeholder_format.idx == 10
         is_num_ph = shape.is_placeholder and shape.placeholder_format.idx == 12
@@ -601,6 +752,29 @@ def _apply_body_text_frame_style(tf, *, caption: bool = False) -> None:
             run.font.color.rgb = CLR_DK1
             if caption:
                 run.font.bold = True
+
+
+def has_designed_chrome_layout(src_slide) -> bool:
+    """McKinsey-style solid cards / accent bars — keep source type hierarchy."""
+    solid_panels = 0
+    accent_bars = 0
+    for shape in src_slide.shapes:
+        if getattr(shape, "is_placeholder", False):
+            continue
+        try:
+            if shape.fill.type != MSO_FILL.SOLID:
+                continue
+        except Exception:
+            continue
+        w, h = int(shape.width or 0), int(shape.height or 0)
+        text = shape.text.strip() if shape.has_text_frame else ""
+        if text:
+            continue
+        if w >= 1_000_000 and h >= 1_000_000:
+            solid_panels += 1
+        elif w < 250_000 and h > 200_000:
+            accent_bars += 1
+    return solid_panels >= 1 or accent_bars >= 2
 
 
 def apply_academy_body_shape_typography(slide) -> None:
@@ -714,9 +888,67 @@ def apply_slide_title_layout(slide, slide_width: int, title: str) -> None:
         ph10.width = min(int(max_w), int(Inches(10.5)))
 
 
+def _body_text_lefts(slide) -> list[int]:
+    lefts: list[int] = []
+    for sh in slide.shapes:
+        if sh.is_placeholder or not sh.has_text_frame:
+            continue
+        if not (sh.text or "").strip():
+            continue
+        if int(sh.top or 0) < bac.HEADER_BOTTOM_EMU:
+            continue
+        lefts.append(int(sh.left or 0))
+    return lefts
+
+
+def count_body_text_columns(slide, slide_width: int, *, gap_ratio: float = 0.08) -> int:
+    """Cluster body textboxes by horizontal gap (3-card rows → 3 columns)."""
+    lefts = sorted(_body_text_lefts(slide))
+    if not lefts:
+        return 0
+    gap = max(int(slide_width * gap_ratio), 600_000)
+    clusters = 1
+    prev = lefts[0]
+    for left in lefts[1:]:
+        if left - prev >= gap:
+            clusters += 1
+        prev = left
+    return clusters
+
+
+def has_hero_body_picture(slide, slide_width: int, slide_height: int | None = None) -> bool:
+    """Large body raster (left/right hero) — do not crush text into a 2-col grid."""
+    height = slide_height
+    if height is None:
+        try:
+            height = int(slide.part.package.presentation_part.presentation.slide_height)
+        except Exception:
+            height = int(slide_width * 9 / 16)
+    min_w = int(slide_width * 0.22)
+    min_h = int(height * 0.25)
+    for sh in slide.shapes:
+        if sh.is_placeholder or sh.shape_type != MSO_SHAPE_TYPE.PICTURE:
+            continue
+        if int(sh.top or 0) < bac.HEADER_BOTTOM_EMU:
+            continue
+        if int(sh.width or 0) >= min_w and int(sh.height or 0) >= min_h:
+            return True
+    return False
+
+
 def relayout_content_columns(slide, slide_width: int) -> None:
-    """Two-column body: move right column left and stretch both columns to margins."""
+    """Two-column body: move right column left and stretch both columns to margins.
+
+    Skip multi-column card rows (3+ horizontal clusters) — forcing 2-col stacks
+    titles/bodies on top of each other (VMware winback slide 3).
+    Skip hero-image + text splits (VMware slides 8/12) — mid-threshold otherwise
+    pulls right-column copy onto the image.
+    """
     if is_speaker_script_slide(slide):
+        return
+    if count_body_text_columns(slide, slide_width) >= 3:
+        return
+    if has_hero_body_picture(slide, slide_width):
         return
     max_right = slide_width - bac.SLIDE_MARGIN_X
     mid_threshold = int(slide_width * 0.44)
@@ -765,6 +997,20 @@ def copy_speaker_notes(src_slide, dst_slide) -> None:
     notes = slide_notes_text(src_slide)
     if notes:
         dst_slide.notes_slide.notes_text_frame.text = notes
+
+
+def apply_brand_pack_to_slide(
+    slide, pack: dict | None, *, kind: str, icon_hits: list[str] | None = None
+) -> None:
+    """Stamp brand logos, remap accents, and swap matched icons."""
+    if not pack:
+        return
+    ensure_brand_pictures(slide, pack, kind)
+    if kind == "content":
+        normalize_brand_accents(slide, pack)
+        replaced = replace_matched_icons(slide, pack)
+        if icon_hits is not None and replaced:
+            icon_hits.extend(replaced)
 
 
 def fill_cover_from_source(slide, src_slide, cfg: DeckMigrateConfig) -> None:
@@ -822,6 +1068,66 @@ def fill_toc(slide, section_titles: list[str]) -> None:
     _fill_contents_guide(slide, ["\n".join(lines)], title_font_pt=28, body_font_pt=18)
 
 
+_TOC_SKIP_LINES = frozenset(
+    {
+        "okestro confidential",
+        "confidential",
+        "internal use only",
+    }
+)
+
+
+def extract_toc_entries(src_slide) -> list[str]:
+    """Build TOC bullets from a source 목차 slide (number + title pairs)."""
+    texts = [
+        (int(sh.top or 0), int(sh.left or 0), sh.text.strip().replace("\x0b", " "))
+        for sh in src_slide.shapes
+        if sh.has_text_frame and sh.text.strip()
+    ]
+    texts.sort(key=lambda row: (row[0], row[1]))
+    entries: list[str] = []
+    i = 0
+    while i < len(texts):
+        line = texts[i][2].split("\n")[0].strip()
+        if line in _TOC_TITLE_MARKERS or line.lower() in _TOC_SKIP_LINES:
+            i += 1
+            continue
+        if re.fullmatch(r"\d{1,2}", line) and i + 1 < len(texts):
+            title = texts[i + 1][2].split("\n")[0].strip()
+            if (
+                title
+                and title not in _TOC_TITLE_MARKERS
+                and title.lower() not in _TOC_SKIP_LINES
+            ):
+                entries.append(f"{line}. {title}")
+                i += 2
+                # Skip one subtitle line under the section title when present.
+                if i < len(texts):
+                    nxt = texts[i][2].split("\n")[0].strip()
+                    if (
+                        nxt
+                        and not re.fullmatch(r"\d{1,2}", nxt)
+                        and nxt not in _TOC_TITLE_MARKERS
+                        and nxt.lower() not in _TOC_SKIP_LINES
+                        and len(nxt) <= 40
+                    ):
+                        i += 1
+                continue
+        if (
+            line
+            and not re.fullmatch(r"\d{1,2}", line)
+            and line.lower() not in _TOC_SKIP_LINES
+        ):
+            entries.append(line)
+        i += 1
+    return entries
+
+
+def fill_toc_from_source(slide, src_slide) -> None:
+    entries = extract_toc_entries(src_slide)
+    fill_toc(slide, entries)
+
+
 def fill_section_from_source(slide, src_slide, chapter_num: int) -> None:
     title, _ = extract_header(src_slide, "section")
     _fill_chapter_guide(
@@ -842,6 +1148,50 @@ def fill_section_from_source(slide, src_slide, chapter_num: int) -> None:
     )
 
 
+def _presentation_dims(slide) -> tuple[int, int]:
+    prs = slide.part.package.presentation_part.presentation
+    return int(prs.slide_width), int(prs.slide_height)
+
+
+def needs_canvas_rescale(src_sw: int, src_sh: int, dst_sw: int, dst_sh: int) -> bool:
+    """True when source slide size differs enough that 1:1 coords will overflow."""
+    if src_sw <= 0 or src_sh <= 0 or dst_sw <= 0 or dst_sh <= 0:
+        return False
+    return (
+        abs(src_sw - dst_sw) / max(src_sw, dst_sw) > 0.08
+        or abs(src_sh - dst_sh) / max(src_sh, dst_sh) > 0.08
+    )
+
+
+def rescale_body_shapes_to_canvas(
+    slide,
+    src_sw: int,
+    src_sh: int,
+    dst_sw: int,
+    dst_sh: int,
+) -> float:
+    """Map shapes from source canvas into the academy content band. Returns scale."""
+    content_top = bac.HEADER_BOTTOM_EMU
+    content_bottom = dst_sh - bac.SLIDE_MARGIN_BOTTOM
+    avail_w = max(dst_sw - 2 * bac.SLIDE_MARGIN_X, 1)
+    avail_h = max(content_bottom - content_top, 1)
+    scale = min(avail_w / src_sw, avail_h / src_sh)
+    offset_x = bac.SLIDE_MARGIN_X + (avail_w - src_sw * scale) / 2
+    # Top-align under header so UI mockups keep reading order.
+    offset_y = float(content_top)
+    for sh in slide.shapes:
+        if sh.is_placeholder:
+            continue
+        try:
+            sh.left = int(offset_x + int(sh.left or 0) * scale)
+            sh.top = int(offset_y + int(sh.top or 0) * scale)
+            sh.width = max(int(int(sh.width or 0) * scale), bac.MIN_SHAPE_W)
+            sh.height = max(int(int(sh.height or 0) * scale), bac.MIN_SHAPE_H)
+        except Exception:
+            continue
+    return float(scale)
+
+
 def migrate_content_body(
     slide,
     src_slide,
@@ -850,14 +1200,20 @@ def migrate_content_body(
     slide_height: int,
     *,
     src_classify_empty: bool = False,
-) -> tuple[bool, int]:
-    """Returns (is_radial_hub, raster_diagrams_restored_count)."""
+    brand_pack: dict | None = None,
+) -> tuple[bool, bool, int, bool, bool, str | None]:
+    """Returns (radial, skip_relayout, rasters, canvas_rescaled, preserve_style, pattern)."""
     title, governing = extract_header(src_slide, "content")
     gov = governing or ""
     radial = is_radial_diagram_slide(src_slide, slide_width, slide_height)
+    src_sw, src_sh = _presentation_dims(src_slide)
+    canvas_mismatch = needs_canvas_rescale(src_sw, src_sh, slide_width, slide_height)
+    designed_chrome = has_designed_chrome_layout(src_slide)
     force_raster = src_classify_empty or count_diagram_rasters(
         src_slide, slide_width, slide_height
     ) >= 1
+    # Keep McKinsey hierarchy/accent colors; forced 12pt black flattens designed decks.
+    preserve_body_style = canvas_mismatch or designed_chrome
 
     apply_content_header_geometry(slide, slide_width)
 
@@ -902,13 +1258,50 @@ def migrate_content_body(
     renumber_map = bac.renumber_shape_ids(slide)
     if not radial:
         bac.fix_orphan_connector_refs(slide, id_remap, renumber_map)
+    canvas_rescaled = False
+    if canvas_mismatch:
+        rescale_body_shapes_to_canvas(
+            slide, src_sw, src_sh, slide_width, slide_height
+        )
+        canvas_rescaled = True
+
+    pattern_name = None
+    patterns = (brand_pack or {}).get("layout_patterns") or {}
+    # Equal card rows beat radial-diagram heuristics (2-col label grids false-positive).
+    if patterns and not canvas_rescaled:
+        n = detect_card_column_count(slide, slide_width)
+        if n:
+            pattern_name = apply_card_column_pattern(
+                slide, patterns, slide_width, column_count=n
+            )
+            if pattern_name:
+                radial = False
+
+    # Use *source* geometry — placeholder heroes may be dropped before dst check.
+    skip_relayout = (
+        radial
+        or canvas_mismatch
+        or designed_chrome
+        or bool(pattern_name)
+        or has_hero_body_picture(src_slide, slide_width, slide_height)
+        or count_body_text_columns(src_slide, slide_width) >= 3
+    )
+
     apply_slide_title_layout(slide, slide_width, title or "")
-    if not radial:
+    if not skip_relayout:
         relayout_content_columns(slide, slide_width)
-    apply_academy_fonts_and_colors(slide)
-    apply_academy_body_shape_typography(slide)
+    apply_academy_fonts_and_colors(slide, placeholders_only=preserve_body_style)
+    if not preserve_body_style:
+        apply_academy_body_shape_typography(slide)
     apply_academy_tables_on_slide(slide)
-    return radial, restored
+    return (
+        radial,
+        skip_relayout,
+        restored,
+        canvas_rescaled,
+        preserve_body_style,
+        pattern_name,
+    )
 
 
 def add_toc_after_cover(
@@ -1018,6 +1411,29 @@ def _migrate_cmp_deck_body(
     skip_ooxml_repair: bool,
     skip_powerpoint_repair: bool,
 ) -> tuple[Path, list[dict], int]:
+    global CLR_DK1, CLR_DK2, CLR_ACCENT1
+    brand_dir = resolve_brand_dir(template)
+    brand_pack = load_brand_pack(str(brand_dir)) if brand_dir else None
+    if brand_pack:
+        CLR_DK1 = brand_rgb(brand_pack, "dk1", "#000000")
+        CLR_DK2 = brand_rgb(brand_pack, "dk2", "#44546A")
+        CLR_ACCENT1 = brand_rgb(brand_pack, "accent1", "#006DFF")
+        warnings.append(
+            {
+                "code": "BRAND_PACK",
+                "level": "info",
+                "message": f"Using academy brand pack at {brand_dir}",
+            }
+        )
+    else:
+        warnings.append(
+            {
+                "code": "BRAND_PACK_MISSING",
+                "level": "info",
+                "message": "brand/ pack not found next to template; using built-in theme colors.",
+            }
+        )
+
     sw, sh = int(prs.slide_width), int(prs.slide_height)
     seeds = layout_seed_slides(prs)
     for name in (LAYOUT_COVER, LAYOUT_TOC, LAYOUT_SECTION, LAYOUT_CONTENT):
@@ -1029,6 +1445,9 @@ def _migrate_cmp_deck_body(
     content_step = 0
     section_num = 0
     radial_slides: list = []
+    skip_relayout_slides: list = []
+    canvas_rescaled_slides: list = []
+    preserve_body_style_slides: list = []
     for src_idx, kind in plan:
         src_slide = src.slides[src_idx]
         if kind == "cover":
@@ -1036,8 +1455,15 @@ def _migrate_cmp_deck_body(
             slide = duplicate_slide_from_seed(prs, seeds[LAYOUT_COVER])
             _prepare_slide_for_editing(slide)
             fill_cover_from_source(slide, src_slide, cfg)
+            apply_brand_pack_to_slide(slide, brand_pack, kind="cover")
             copy_speaker_notes(src_slide, slide)
             add_toc_after_cover(prs, seeds, src, src_idx, cfg)
+        elif kind == "toc":
+            content_step = 0
+            slide = duplicate_slide_from_seed(prs, seeds[LAYOUT_TOC])
+            _prepare_slide_for_editing(slide)
+            fill_toc_from_source(slide, src_slide)
+            copy_speaker_notes(src_slide, slide)
         elif kind == "section":
             content_step = 0
             section_num += 1
@@ -1054,16 +1480,72 @@ def _migrate_cmp_deck_body(
             src_empty = (
                 classify_slide(src_slide, src_idx, cfg.part_cover_indices) == "empty"
             )
-            radial, restored = migrate_content_body(
+            placeholder_n = sum(
+                1
+                for sh in src_slide.shapes
+                if sh.shape_type == MSO_SHAPE_TYPE.PICTURE
+                and is_stock_placeholder_picture(sh)
+            )
+            (
+                radial,
+                skip_relayout,
+                restored,
+                canvas_rescaled,
+                preserve_body_style,
+                pattern_name,
+            ) = migrate_content_body(
                 slide,
                 src_slide,
                 str(content_step),
                 sw,
                 sh,
                 src_classify_empty=src_empty,
+                brand_pack=brand_pack,
             )
             if radial:
                 radial_slides.append(slide)
+            if skip_relayout:
+                skip_relayout_slides.append(slide)
+            if preserve_body_style:
+                preserve_body_style_slides.append(slide)
+            if pattern_name:
+                warnings.append(
+                    {
+                        "code": "LAYOUT_PATTERN",
+                        "level": "info",
+                        "slide": content_step,
+                        "message": (
+                            f"Applied academy {pattern_name} card pattern "
+                            f"on content step {content_step}."
+                        ),
+                    }
+                )
+            if canvas_rescaled:
+                canvas_rescaled_slides.append(slide)
+                if not any(w.get("code") == "CANVAS_RESCALED" for w in warnings):
+                    src_sw, src_sh = _presentation_dims(src_slide)
+                    warnings.append(
+                        {
+                            "code": "CANVAS_RESCALED",
+                            "message": (
+                                f"Source slide size {src_sw}×{src_sh} differs from "
+                                f"academy {sw}×{sh}; body shapes were scaled to fit."
+                            ),
+                        }
+                    )
+            if placeholder_n:
+                warnings.append(
+                    {
+                        "code": "SOURCE_PLACEHOLDER_IMAGE",
+                        "message": (
+                            f"Source slide {src_idx + 1}: {placeholder_n} placeholder "
+                            "image(s) (e.g. 600×400 stub) — re-export from Google Slides "
+                            "with embedded media to restore visuals."
+                        ),
+                        "src_index": src_idx,
+                        "count": placeholder_n,
+                    }
+                )
             if restored:
                 warnings.append(
                     {
@@ -1096,7 +1578,12 @@ def _migrate_cmp_deck_body(
 
     for slide in prs.slides:
         radial = slide in radial_slides
-        bac.polish_slide(slide, skip_body_dedup=radial)
+        skip_relayout = slide in skip_relayout_slides
+        canvas_rescaled = slide in canvas_rescaled_slides
+        preserve_body_style = slide in preserve_body_style_slides
+        bac.polish_slide(
+            slide, skip_body_dedup=radial or canvas_rescaled or preserve_body_style
+        )
         if slide.slide_layout.name == LAYOUT_CONTENT:
             title = ""
             for sh in slide.placeholders:
@@ -1104,31 +1591,42 @@ def _migrate_cmp_deck_body(
                     title = normalize_slide_title(sh.text or "")
             hide_empty_governing_placeholder(slide)
             if not radial:
-                apply_academy_fonts_and_colors(slide)
-                apply_academy_body_shape_typography(slide)
-        if not radial:
+                apply_academy_fonts_and_colors(
+                    slide, placeholders_only=preserve_body_style
+                )
+                if not preserve_body_style:
+                    apply_academy_body_shape_typography(slide)
+        if not radial and not canvas_rescaled and not preserve_body_style:
             bac.fit_body_shapes(slide, sw, sh)
-        if slide.slide_layout.name == LAYOUT_CONTENT and not radial:
+        if slide.slide_layout.name == LAYOUT_CONTENT and not skip_relayout:
             relayout_content_columns(slide, sw)
             t = ""
             for sh in slide.placeholders:
                 if sh.placeholder_format.idx == 10:
                     t = normalize_slide_title(sh.text or "")
             apply_slide_title_layout(slide, sw, t)
-        elif slide.slide_layout.name == LAYOUT_CONTENT and radial:
+        elif slide.slide_layout.name == LAYOUT_CONTENT and skip_relayout:
             t = ""
             for sh in slide.placeholders:
                 if sh.placeholder_format.idx == 10:
                     t = normalize_slide_title(sh.text or "")
             apply_slide_title_layout(slide, sw, t)
-            apply_academy_fonts_and_colors(slide)
-            apply_academy_body_shape_typography(slide)
+            if not radial:
+                apply_academy_fonts_and_colors(
+                    slide, placeholders_only=preserve_body_style
+                )
+                if not preserve_body_style:
+                    apply_academy_body_shape_typography(slide)
 
     from scripts.academy_deck_build_lib import fix_open_in_slide_view, polish_academy_presentation
 
     polish_academy_presentation(prs)
     for slide in prs.slides:
-        if slide.slide_layout.name == LAYOUT_CONTENT:
+        if (
+            slide.slide_layout.name == LAYOUT_CONTENT
+            and slide not in canvas_rescaled_slides
+            and slide not in preserve_body_style_slides
+        ):
             title = ""
             for sh in slide.placeholders:
                 if sh.placeholder_format.idx == 10:
@@ -1136,6 +1634,27 @@ def _migrate_cmp_deck_body(
             apply_slide_title_layout(slide, sw, title)
             hide_empty_governing_placeholder(slide)
             apply_academy_body_shape_typography(slide)
+    icon_hits: list[str] = []
+    if brand_pack:
+        for slide in prs.slides:
+            name = slide.slide_layout.name
+            if name == LAYOUT_COVER:
+                apply_brand_pack_to_slide(slide, brand_pack, kind="cover")
+            elif name == LAYOUT_CONTENT:
+                apply_brand_pack_to_slide(
+                    slide, brand_pack, kind="content", icon_hits=icon_hits
+                )
+        if icon_hits:
+            warnings.append(
+                {
+                    "code": "BRAND_ICONS_REPLACED",
+                    "level": "info",
+                    "message": (
+                        f"Replaced {len(icon_hits)} icon(s) with academy brand pack: "
+                        + ", ".join(sorted(set(icon_hits))[:12])
+                    ),
+                }
+            )
     slide_count = len(prs.slides)
     if slide_count != expected_slides:
         warnings.append(

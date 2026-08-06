@@ -11,7 +11,27 @@ import tempfile
 import zipfile
 from pathlib import Path
 
-OFFICE_EXT_URIS = ("FF2B5EF4", "DCECCB84", "BB962C8B", "C183EC19", "B7FDDCBA")
+# GUID fragments inside a:ext/@uri that Mac PowerPoint often rejects (Repair dialog).
+OFFICE_EXT_URIS = (
+    "FF2B5EF4",
+    "DCECCB84",
+    "BB962C8B",
+    "C183EC19",
+    "B7FDDCBA",
+    "96DAC541",  # asvg:svgBlip — PNG media with SVG extension triggers Repair
+    "28A0092B",  # a14:useLocalDpi
+    "9D8B030D",  # table gridCol colId (office/drawing/2014)
+    "0D108BD9",  # table grid rowId (office/drawing/2014)
+    "D42A27DB",  # table-related ext seen on §7 migrate decks
+)
+# Local-name tags (any namespace) that should be dropped when nested under a:extLst.
+OFFICE_EXT_TAGS = (
+    "creationId",
+    "custDataLst",
+    "svgBlip",
+    "colId",
+    "rowId",
+)
 P_NS = "http://schemas.openxmlformats.org/presentationml/2006/main"
 A_NS = "http://schemas.openxmlformats.org/drawingml/2006/main"
 
@@ -59,18 +79,41 @@ def _strip_office_extensions_xml(data: bytes) -> bytes:
     root = etree.fromstring(data)
     remove: list = []
     for el in root.iter():
-        tag = el.tag.split("}")[-1]
-        if tag in ("creationId", "custDataLst"):
+        tag = el.tag.split("}")[-1] if "}" in str(el.tag) else str(el.tag)
+        if tag in OFFICE_EXT_TAGS:
             remove.append(el)
             continue
         if tag == "ext":
             uri = el.get("uri") or ""
+            # Keep geometric a:ext under a:xfrm (no uri) — those are width/height.
+            if not uri:
+                continue
             if any(marker in uri for marker in OFFICE_EXT_URIS):
                 remove.append(el)
+                continue
+            # Defense: office drawing extensions nested under a:ext (SVG / 2014 table ids).
+            if any(
+                "SVG/main" in str(c.tag)
+                or "drawing/2014" in str(c.tag)
+                or (c.tag.split("}")[-1] if "}" in str(c.tag) else "") in OFFICE_EXT_TAGS
+                for c in el
+            ):
+                remove.append(el)
+                continue
+            if "schemas.microsoft.com/office/drawing" in uri:
+                remove.append(el)
+                continue
     for el in remove:
         parent = el.getparent()
         if parent is not None:
             parent.remove(el)
+    # Drop empty extLst left behind after stripping SVG / office extensions.
+    for el in list(root.iter()):
+        tag = el.tag.split("}")[-1] if "}" in str(el.tag) else str(el.tag)
+        if tag == "extLst" and len(el) == 0:
+            parent = el.getparent()
+            if parent is not None:
+                parent.remove(el)
     return etree.tostring(
         root, xml_declaration=True, encoding="UTF-8", standalone=True
     )
@@ -393,8 +436,12 @@ def finalize_pptx_package(path: Path) -> int:
                 continue
             try:
                 raw = xml_file.read_bytes()
-                if re.match(r"slide\d+\.xml$", xml_file.name) and "ppt/slides" in str(
-                    xml_file.relative_to(root)
+                rel = str(xml_file.relative_to(root).as_posix())
+                # Slides + layouts/masters: drop p:style on cxnSp (Mac Repair trigger).
+                if (
+                    (re.match(r"slide\d+\.xml$", xml_file.name) and "ppt/slides/" in rel)
+                    or "ppt/slideLayouts/" in rel
+                    or "ppt/slideMasters/" in rel
                 ):
                     raw = _normalize_slide_connectors(raw)
                 raw = _strip_office_extensions_xml(raw)
