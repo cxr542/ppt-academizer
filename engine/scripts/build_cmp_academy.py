@@ -26,7 +26,7 @@ from scripts.deck_migrate_config import (  # noqa: E402
     DeckMigrateConfig,
     migrate_config_for_source,
 )
-from scripts.pptx_ingest import slide_notes_text  # noqa: E402
+from scripts.pptx_ingest import iter_shapes, slide_notes_text  # noqa: E402
 
 import scripts.academy_deck_build_lib as adl  # noqa: E402
 
@@ -170,7 +170,7 @@ def classify_slide(
     covers = part_cover_indices if part_cover_indices is not None else frozenset({0, 13})
     texts = [
         (int(sh.top or 0), sh.text.strip())
-        for sh in slide.shapes
+        for sh, _depth in iter_shapes(slide.shapes)
         if sh.has_text_frame and sh.text.strip()
     ]
     texts.sort()
@@ -194,7 +194,7 @@ def classify_slide(
 def extract_header(src_slide, kind: str) -> tuple[str | None, str | None]:
     texts = [
         (int(sh.top or 0), sh.text.strip())
-        for sh in src_slide.shapes
+        for sh, _depth in iter_shapes(src_slide.shapes)
         if sh.has_text_frame and sh.text.strip()
     ]
     texts.sort()
@@ -634,7 +634,7 @@ def hide_empty_governing_placeholder(slide) -> None:
             continue
         if (shape.text or "").strip():
             return
-        shape._element.getparent().remove(shape._element)
+        adl.collapse_content_placeholders(slide, indices=(13,))
         return
 
 
@@ -643,7 +643,8 @@ def apply_content_header_geometry(slide, slide_width: int | None = None) -> None
     _restore_slide_placeholder_geometry(slide)
     ph10 = _ph_by_idx(slide, 10)
     ph10.left = LAYOUT_PH10_LEFT
-    # Title (ph10) stays on seed row above step number (ph12); do not align tops.
+    ph10.top = adl.TITLE_ROW_TOP
+    ph10.height = max(int(ph10.height or 0), adl.LAB_TITLE_HEIGHT)
     if slide_width:
         max_w = slide_width - LAYOUT_PH10_LEFT - bac.SLIDE_MARGIN_X
         ph10.width = min(int(max_w), int(Inches(10.5)))
@@ -1128,6 +1129,12 @@ def _migrate_cmp_deck_body(
     polish_academy_presentation(prs)
     for slide in prs.slides:
         if slide.slide_layout.name == LAYOUT_CONTENT:
+            title = ""
+            for sh in slide.placeholders:
+                if sh.placeholder_format.idx == 10:
+                    title = normalize_slide_title(sh.text or "")
+            apply_slide_title_layout(slide, sw, title)
+            hide_empty_governing_placeholder(slide)
             apply_academy_body_shape_typography(slide)
     slide_count = len(prs.slides)
     if slide_count != expected_slides:
