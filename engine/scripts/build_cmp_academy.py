@@ -39,7 +39,7 @@ from scripts.deck_migrate_config import (  # noqa: E402
     migrate_config_for_source,
 )
 from scripts.pptx_ingest import iter_shapes, iter_shapes_abs, slide_notes_text  # noqa: E402
-from scripts.slide_classifier_v2 import analyze_slide_layout  # noqa: E402
+from scripts.llm_classifier import analyze_slide_with_llm  # noqa: E402
 
 import scripts.academy_deck_build_lib as adl  # noqa: E402
 
@@ -260,11 +260,11 @@ def _pick_content_governing(
 
 
 def extract_header(src_slide, kind: str) -> tuple[str | None, str | None]:
-    layout_info = analyze_slide_layout(src_slide)
-    title = layout_info["title"]
-    gov = layout_info["governing"]
+    layout_info = analyze_slide_with_llm(src_slide)
+    title = layout_info.get("title")
+    gov = layout_info.get("governing")
 
-    if not title and layout_info["blocks"]:
+    if not title and layout_info.get("blocks"):
         title = _normalize_header_line(layout_info["blocks"][0]["text"])
 
     if title:

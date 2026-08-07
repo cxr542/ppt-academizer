@@ -139,6 +139,7 @@ def health():
         "template_configured": tpl_ok,
         "brand_configured": bool(brand_dir),
         "brand_dir": str(brand_dir) if brand_dir else None,
+        "llm_configured": bool(__import__("os").environ.get("GEMINI_API_KEY")),
         "max_upload_mb": max_upload_mb(),
         "max_upload_bytes": max_upload_bytes(),
         "standard_max_slides": standard_max_slides(),
