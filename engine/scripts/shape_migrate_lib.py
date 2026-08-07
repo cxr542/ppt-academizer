@@ -58,7 +58,7 @@ TITLE_TOP = 370_849
 TITLE_WIDTH = 9_948_172  # keeps right edge; was 9660000 when title started at 1059435
 GOV_LEFT, GOV_TOP, GOV_WIDTH = 514_984, 757_189, 5_760_404
 # Template guide: governing ≤ 2 lines @ 14pt in GOV_WIDTH (~40 Hangul/line).
-GOV_MAX_LEN = 96
+GOV_MAX_LEN = 300
 BODY_TOP_MIN = 1_050_000
 RIGHT_COL_MIN = 7_000_000
 CONTENT_LAYOUTS = {"내지_거버닝 O", "1_내지_거버닝 X"}
