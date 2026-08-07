@@ -210,8 +210,8 @@ def classify_slide(
     if index in covers:
         return "cover"
 
-    layout_info = analyze_slide_layout(slide)
-    layout = layout_info["layout"]
+    layout_info = analyze_slide_with_llm(slide)
+    layout = layout_info.get("layout", "content")
 
     if layout == "empty" and _slide_has_picture(slide):
         return "content"
