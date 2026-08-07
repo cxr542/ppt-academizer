@@ -232,7 +232,15 @@ def detect_deck_profile(
         return "google_image", _structure_to_meta(st, {"reason": "majority_google_image_slides"})
 
     if is_lab_lecture_deck(st):
-        return "spec", _structure_to_meta(st, {"reason": "lab_lecture_structure"})
+        cfg = config_for_kind(deck_kind)
+        return "migrate_cmp", _structure_to_meta(
+            st, 
+            {
+                "deck_kind": deck_kind,
+                "auto_toc_after_cover": cfg.auto_toc_after_cover,
+                "reason": "lab_lecture_structure_but_forced_migrate"
+            }
+        )
 
     if is_partner_shape_heavy(st):
         cfg = config_for_kind(deck_kind)
@@ -246,7 +254,15 @@ def detect_deck_profile(
         )
 
     if is_text_lecture_deck(st):
-        return "spec", _structure_to_meta(st, {"reason": "text_lecture_structure"})
+        cfg = config_for_kind(deck_kind)
+        return "migrate_cmp", _structure_to_meta(
+            st, 
+            {
+                "deck_kind": deck_kind,
+                "auto_toc_after_cover": cfg.auto_toc_after_cover,
+                "reason": "text_lecture_structure_but_forced_migrate"
+            }
+        )
 
     ai_hint = ai_filename_hint(name)
     if is_ai_freeform_text_deck(st) or (
@@ -255,25 +271,23 @@ def detect_deck_profile(
         and st.google_image_ratio < 0.45
         and st.shapes_per_slide < 3.5
     ):
-        return "spec", _structure_to_meta(
+        cfg = config_for_kind(deck_kind)
+        return "migrate_cmp", _structure_to_meta(
             st,
             {
-                "reason": "ai_freeform_export",
+                "deck_kind": deck_kind,
+                "auto_toc_after_cover": cfg.auto_toc_after_cover,
+                "reason": "ai_freeform_export_but_forced_migrate",
                 "ai_filename_hint": ai_hint,
             },
         )
 
-    if st.total_text_blocks >= max(3, st.slide_count // 2) and st.google_image_ratio < 0.85:
-        if st.shapes_per_slide >= 3.0 and st.slide_count >= 8:
-            cfg = config_for_kind(deck_kind)
-            return "migrate_cmp", _structure_to_meta(
-                st,
-                {
-                    "deck_kind": deck_kind,
-                    "auto_toc_after_cover": cfg.auto_toc_after_cover,
-                    "reason": "dense_shapes_fallback",
-                },
-            )
-        return "spec", _structure_to_meta(st, {"reason": "extractable_text_blocks"})
-
-    return "spec", _structure_to_meta(st, {"reason": "default_spec_heuristic"})
+    cfg = config_for_kind(deck_kind)
+    return "migrate_cmp", _structure_to_meta(
+        st, 
+        {
+            "deck_kind": deck_kind,
+            "auto_toc_after_cover": cfg.auto_toc_after_cover,
+            "reason": "default_migrate_heuristic"
+        }
+    )
