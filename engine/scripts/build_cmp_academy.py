@@ -1146,8 +1146,20 @@ def rescale_body_shapes_to_canvas(
         try:
             sh.left = int(offset_x + int(sh.left or 0) * scale)
             sh.top = int(offset_y + int(sh.top or 0) * scale)
-            sh.width = max(int(int(sh.width or 0) * scale), bac.MIN_SHAPE_W)
-            sh.height = max(int(int(sh.height or 0) * scale), bac.MIN_SHAPE_H)
+            
+            is_line = False
+            if sh.shape_type == MSO_SHAPE_TYPE.LINE:
+                is_line = True
+            elif sh.shape_type == MSO_SHAPE_TYPE.AUTO_SHAPE:
+                if getattr(sh, "auto_shape_type", None) == 20: # MSO_SHAPE.LINE
+                    is_line = True
+            
+            if is_line:
+                sh.width = int(int(sh.width or 0) * scale)
+                sh.height = int(int(sh.height or 0) * scale)
+            else:
+                sh.width = max(int(int(sh.width or 0) * scale), bac.MIN_SHAPE_W)
+                sh.height = max(int(int(sh.height or 0) * scale), bac.MIN_SHAPE_H)
         except Exception:
             continue
     return float(scale)
