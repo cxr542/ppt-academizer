@@ -544,8 +544,11 @@ def _apply_terminal_fill(dst_shape, src_shape) -> None:
             return
         fc = src_shape.fill.fore_color
         if fc.type == MSO_COLOR_TYPE.SCHEME:
-            dst_shape.fill.solid()
-            dst_shape.fill.fore_color.rgb = TERMINAL_FILL_RGB
+            from pptx.enum.dml import MSO_THEME_COLOR
+            # Only apply to tx1/dk1 to prevent white boxes from turning black
+            if fc.theme_color in (MSO_THEME_COLOR.DARK_1, MSO_THEME_COLOR.TEXT_1):
+                dst_shape.fill.solid()
+                dst_shape.fill.fore_color.rgb = TERMINAL_FILL_RGB
     except Exception:
         pass
 
