@@ -194,11 +194,20 @@ def _is_icon_sized(width: int, height: int) -> bool:
 
 
 def _slide_has_picture_near(slide, left: int, top: int, *, tol: int = 200_000) -> bool:
-    for sh in slide.shapes:
-        if sh.shape_type != MSO_SHAPE_TYPE.PICTURE:
-            continue
-        if abs(int(sh.left or 0) - left) <= tol and abs(int(sh.top or 0) - top) <= tol:
-            return True
+    def check_shapes(shapes):
+        for sh in shapes:
+            if sh.shape_type == MSO_SHAPE_TYPE.PICTURE:
+                if abs(int(sh.left or 0) - left) <= tol and abs(int(sh.top or 0) - top) <= tol:
+                    return True
+            elif sh.shape_type == MSO_SHAPE_TYPE.GROUP:
+                if check_shapes(sh.shapes):
+                    return True
+        return False
+        
+    if check_shapes(slide.shapes):
+        return True
+    if check_shapes(slide.slide_layout.shapes):
+        return True
     return False
 
 
