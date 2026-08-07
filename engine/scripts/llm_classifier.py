@@ -84,8 +84,17 @@ def analyze_slide_with_llm(slide, slide_index: int = -1) -> dict[str, Any]:
             ),
         )
         
-        # Pydantic을 이용해 파싱 및 검증
-        data = json.loads(response.text)
+        # 응답이 마크다운 json 블록으로 감싸져 있을 수 있으므로 처리
+        text = response.text.strip()
+        if text.startswith("```json"):
+            text = text[7:]
+        if text.startswith("```"):
+            text = text[3:]
+        if text.endswith("```"):
+            text = text[:-3]
+        text = text.strip()
+
+        data = json.loads(text)
         analysis = SlideLayoutAnalysis.model_validate(data)
         
         return {
@@ -96,12 +105,17 @@ def analyze_slide_with_llm(slide, slide_index: int = -1) -> dict[str, Any]:
             "blocks": blocks,
         }
     except Exception as e:
-        print(f"LLM Classification Error on slide {slide_index}: {e}")
-        # 오류 시 폴백
+        import traceback
+        print(f"LLM Classification Error on slide {slide_index}: {traceback.format_exc()}")
+        
+        # LLM 실패 시 기존 V2 휴리스틱(slide_classifier_v2)으로 안전하게 폴백
+        from scripts.slide_classifier_v2 import analyze_slide_layout
+        fallback_info = analyze_slide_layout(slide)
+        
         return {
-            "layout": "content",
-            "title": blocks[0]["text"] if blocks else "",
-            "governing": "",
-            "kicker": "",
+            "layout": fallback_info.get("layout", "content"),
+            "title": fallback_info.get("title", ""),
+            "governing": fallback_info.get("governing", ""),
+            "kicker": "",  # V2 에서는 kicker 필드가 명시적으로 분리되지 않음
             "blocks": blocks,
         }
