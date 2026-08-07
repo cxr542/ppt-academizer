@@ -1223,26 +1223,11 @@ def migrate_content_body(
         canvas_rescaled = True
 
     pattern_name = None
-    patterns = (brand_pack or {}).get("layout_patterns") or {}
-    # Equal card rows beat radial-diagram heuristics (2-col label grids false-positive).
-    if patterns and not canvas_rescaled:
-        n = detect_card_column_count(slide, slide_width)
-        if n:
-            pattern_name = apply_card_column_pattern(
-                slide, patterns, slide_width, column_count=n
-            )
-            if pattern_name:
-                radial = False
-
+    # 사용자의 요청에 따라 본문 자동 레이아웃(카드 패턴 등)을 모두 비활성화하고 그대로 복사합니다.
+    
     # Use *source* geometry — placeholder heroes may be dropped before dst check.
-    skip_relayout = (
-        radial
-        or canvas_mismatch
-        or designed_chrome
-        or bool(pattern_name)
-        or has_hero_body_picture(src_slide, slide_width, slide_height)
-        or count_body_text_columns(src_slide, slide_width) >= 3
-    )
+    skip_relayout = True
+    preserve_body_style = True
 
     apply_slide_title_layout(slide, slide_width, title or "")
     if not skip_relayout:
