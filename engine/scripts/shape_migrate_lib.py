@@ -335,15 +335,40 @@ def _group_child_position(group, child, off_l: int, off_t: int) -> tuple[int, in
     """Resolve Google-export group child coordinates to slide-absolute EMU."""
     g_l, g_t = int(group.left or 0), int(group.top or 0)
     c_l, c_t = int(child.left or 0), int(child.top or 0)
-    if c_t >= g_t:
+    
+    # Check if the child coordinates are already slide-absolute
+    if c_t >= g_t - 500_000 and c_l >= g_l - 500_000:
         return off_l + c_l, off_t + c_t
-    # Reused template row inside lower groups: offset from group anchor.
-    rel_l = c_l - TERMINAL_TEMPLATE_CHILD_LEFT
-    rel_t = c_t - TERMINAL_TEMPLATE_CHILD_TOP
-    return (
-        off_l + g_l + TERMINAL_TEMPLATE_CHILD_LEFT + rel_l,
-        off_t + g_t + TERMINAL_ROW_DY + rel_t,
-    )
+
+    # Read proper transform from XML for relative child coordinates
+    try:
+        xfrm = group._element.grpSpPr.xfrm
+        if xfrm is not None:
+            ch_x = xfrm.chOff.x if xfrm.chOff is not None else 0
+            ch_y = xfrm.chOff.y if xfrm.chOff is not None else 0
+            
+            ext = xfrm.ext
+            chExt = xfrm.chExt
+            ch_cx = chExt.cx if chExt is not None else (ext.cx if ext is not None else 1)
+            ch_cy = chExt.cy if chExt is not None else (ext.cy if ext is not None else 1)
+            
+            g_cx = ext.cx if ext is not None else 1
+            g_cy = ext.cy if ext is not None else 1
+            
+            # Prevent division by zero
+            ch_cx = max(ch_cx, 1)
+            ch_cy = max(ch_cy, 1)
+            
+            scale_x = g_cx / ch_cx
+            scale_y = g_cy / ch_cy
+            
+            abs_l = g_l + int((c_l - ch_x) * scale_x)
+            abs_t = g_t + int((c_t - ch_y) * scale_y)
+            return off_l + abs_l, off_t + abs_t
+    except Exception:
+        pass
+    
+    return off_l + g_l + c_l, off_t + g_t + c_t
 
 
 def clone_connector_xml(shape, slide, off_l: int = 0, off_t: int = 0) -> None:
