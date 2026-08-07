@@ -765,7 +765,11 @@ def hide_empty_governing_placeholder(slide) -> None:
             continue
         if (shape.text or "").strip():
             return
-        adl.collapse_content_placeholders(slide, indices=(13,))
+        shape.text = ""
+        shape.left = 99999999
+        shape.top = 99999999
+        shape.width = 1
+        shape.height = 1
         return
 
 
