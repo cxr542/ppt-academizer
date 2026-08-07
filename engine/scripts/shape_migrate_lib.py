@@ -370,6 +370,15 @@ def _copy_fill(dst_shape, src_shape) -> None:
     try:
         src, dst = src_shape.fill, dst_shape.fill
         if src.type == MSO_FILL.SOLID:
+            xml = ""
+            try:
+                xml = src_shape._element.xml
+            except Exception:
+                pass
+            if 'alpha val="0"' in xml or "alpha val='0'" in xml:
+                dst.background()
+                return
+            
             dst.solid()
             sc = src.fore_color
             if sc.type == MSO_COLOR_TYPE.SCHEME:
