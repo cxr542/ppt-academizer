@@ -883,7 +883,9 @@ def renumber_shape_ids(slide) -> dict[str, str]:
 def _scrub_slide_xml(data: bytes) -> bytes:
     from lxml import etree
 
-    root = etree.fromstring(data)
+    from scripts.safe_xml import safe_fromstring
+
+    root = safe_fromstring(data)
     remove: list = []
     for el in root.iter():
         tag = el.tag.split("}")[-1]

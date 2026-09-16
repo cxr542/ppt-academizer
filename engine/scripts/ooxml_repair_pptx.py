@@ -31,10 +31,12 @@ def _repair_whitespace_lxml(unpacked: Path) -> int:
     """Add xml:space='preserve' on a:t with edge whitespace (lxml, not minidom)."""
     from lxml import etree
 
+    from scripts.safe_xml import safe_parse
+
     repairs = 0
     for xml_file in unpacked.rglob("*.xml"):
         try:
-            tree = etree.parse(str(xml_file))
+            tree = safe_parse(xml_file)
         except etree.XMLSyntaxError:
             continue
         root = tree.getroot()

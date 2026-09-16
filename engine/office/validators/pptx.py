@@ -4,6 +4,8 @@ Validator for PowerPoint presentation XML files against XSD schemas.
 
 import re
 
+from scripts.safe_xml import safe_parse
+
 from .base import BaseSchemaValidator
 
 
@@ -69,7 +71,7 @@ class PPTXSchemaValidator(BaseSchemaValidator):
 
         for xml_file in self.xml_files:
             try:
-                root = lxml.etree.parse(str(xml_file)).getroot()
+                root = safe_parse(xml_file).getroot()
 
                 for elem in root.iter():
                     for attr, value in elem.attrib.items():
@@ -115,7 +117,7 @@ class PPTXSchemaValidator(BaseSchemaValidator):
 
         for slide_master in slide_masters:
             try:
-                root = lxml.etree.parse(str(slide_master)).getroot()
+                root = safe_parse(slide_master).getroot()
 
                 rels_file = slide_master.parent / "_rels" / f"{slide_master.name}.rels"
 
@@ -126,7 +128,7 @@ class PPTXSchemaValidator(BaseSchemaValidator):
                     )
                     continue
 
-                rels_root = lxml.etree.parse(str(rels_file)).getroot()
+                rels_root = safe_parse(rels_file).getroot()
 
                 valid_layout_rids = set()
                 for rel in rels_root.findall(
@@ -177,7 +179,7 @@ class PPTXSchemaValidator(BaseSchemaValidator):
 
         for rels_file in slide_rels_files:
             try:
-                root = lxml.etree.parse(str(rels_file)).getroot()
+                root = safe_parse(rels_file).getroot()
 
                 layout_rels = [
                     rel
@@ -222,7 +224,7 @@ class PPTXSchemaValidator(BaseSchemaValidator):
 
         for rels_file in slide_rels_files:
             try:
-                root = lxml.etree.parse(str(rels_file)).getroot()
+                root = safe_parse(rels_file).getroot()
 
                 for rel in root.findall(
                     f".//{{{self.PACKAGE_RELATIONSHIPS_NAMESPACE}}}Relationship"
