@@ -40,7 +40,9 @@ def _normalize_slide_connectors(data: bytes) -> bytes:
     """Mac PowerPoint repair often strips cxnSp with empty ln fill or p:style."""
     from lxml import etree
 
-    root = etree.fromstring(data)
+    from scripts.safe_xml import safe_fromstring
+
+    root = safe_fromstring(data)
     tag_cxn = f"{{{P_NS}}}cxnSp"
     tag_style = f"{{{P_NS}}}style"
     tag_ln = f"{{{A_NS}}}ln"
@@ -76,7 +78,9 @@ def _normalize_slide_connectors(data: bytes) -> bytes:
 def _strip_office_extensions_xml(data: bytes) -> bytes:
     from lxml import etree
 
-    root = etree.fromstring(data)
+    from scripts.safe_xml import safe_fromstring
+
+    root = safe_fromstring(data)
     remove: list = []
     for el in root.iter():
         tag = el.tag.split("}")[-1] if "}" in str(el.tag) else str(el.tag)
@@ -122,7 +126,9 @@ def _strip_office_extensions_xml(data: bytes) -> bytes:
 def _strip_text_outline_xml(data: bytes) -> bytes:
     from lxml import etree
 
-    root = etree.fromstring(data)
+    from scripts.safe_xml import safe_fromstring
+
+    root = safe_fromstring(data)
     text_props = {
         f"{{{A_NS}}}rPr",
         f"{{{A_NS}}}defRPr",
