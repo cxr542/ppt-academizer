@@ -106,6 +106,17 @@ def format_warning(w: dict) -> dict:
     level = "info"
     body = _sanitize_technical_message(str(w.get("message") or ""), code)
 
+    if code == "HEADER_TEXT_DROPPED":
+        text = str(w.get("text") or "").strip()
+        return {
+            "code": code,
+            "level": "info",
+            "slide": slide_n,
+            "message": prefix
+            + f"상단 영역의 텍스트 \"{text}\"을(를) 제목과 겹치지 않도록 제외했습니다. "
+            "필요하면 원본에서 옮겨 주세요.",
+        }
+
     if code in templates:
         entry = templates[code]
         if isinstance(entry, tuple):

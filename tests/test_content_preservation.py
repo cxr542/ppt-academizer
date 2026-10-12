@@ -140,3 +140,39 @@ def test_small_content_picture_is_not_reported(tmp_path) -> None:
 def test_picture_dropped_message_shows_slide_number() -> None:
     shown = format_warning({"code": "PICTURE_DROPPED", "src_index": 12})
     assert shown["level"] == "warn" and "13" in shown["message"]
+
+
+def test_chart_starting_in_the_header_band_is_body_content() -> None:
+    from pptx.chart.data import CategoryChartData
+    from pptx.enum.chart import XL_CHART_TYPE
+
+    prs = Presentation()
+    prs.slide_width, prs.slide_height = Inches(13.333), Inches(7.5)
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    data = CategoryChartData()
+    data.categories = ["A", "B"]
+    data.add_series("S", (1, 2))
+    chart = slide.shapes.add_chart(
+        XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(1), Inches(0.5), Inches(8), Inches(5), data
+    )  # top = 0.5in, inside the header band
+    assert is_body_shape(chart, "제목", None)
+
+
+def test_dropped_header_text_reports_tags_but_not_titles_or_footers() -> None:
+    from scripts.build_cmp_academy import dropped_header_text
+
+    prs = Presentation()
+    prs.slide_width, prs.slide_height = Inches(13.333), Inches(7.5)
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    slide.shapes.add_textbox(Inches(1), Inches(0.42), Inches(1.5), Inches(0.3)).text_frame.text = "TECHNICAL"
+    slide.shapes.add_textbox(Inches(1), Inches(0.5), Inches(9), Inches(0.8)).text_frame.text = "쿠버네티스 핵심 개념"
+    slide.shapes.add_textbox(Inches(11.5), Inches(6.9), Inches(0.5), Inches(0.3)).text_frame.text = "7"
+    slide.shapes.add_textbox(Inches(1), Inches(2.5), Inches(9), Inches(1)).text_frame.text = "본문은 보고 대상이 아닙니다"
+
+    assert dropped_header_text(slide, "쿠버네티스 핵심 개념", None) == ["TECHNICAL"]
+
+
+def test_header_text_dropped_message_includes_the_text_and_slide() -> None:
+    shown = format_warning({"code": "HEADER_TEXT_DROPPED", "src_index": 1, "text": "TECHNICAL"})
+    assert shown["level"] == "info"
+    assert "TECHNICAL" in shown["message"] and shown["message"].startswith("원본 2장")

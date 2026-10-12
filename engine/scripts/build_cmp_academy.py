@@ -1077,6 +1077,38 @@ def dropped_unrepeated_pictures(
     return found
 
 
+def dropped_header_text(src_slide, title: str | None, governing: str | None) -> list[str]:
+    """Text boxes the body filter dropped from the header band (kickers, tags, dates).
+
+    They are removed on purpose so they do not collide with the academy title, but the text
+    is lost; titles, governing lines, footers/page numbers and configured chrome stay silent.
+    """
+    from scripts.deck_migrate_config import skip_shape_names
+
+    skip_names = skip_shape_names()
+    found: list[str] = []
+    for sh in src_slide.shapes:
+        if sh.shape_type == MSO_SHAPE_TYPE.PLACEHOLDER or sh.name in skip_names:
+            continue
+        if not (getattr(sh, "has_text_frame", False) and sh.has_text_frame):
+            continue
+        text = (sh.text_frame.text or "").strip()
+        if not text:
+            continue
+        if bac.is_body_shape(sh, title, governing):
+            continue
+        if bac._is_footer_page_number(sh, text) or bac._is_source_footer_line(text):
+            continue
+        compact = bac.norm(text.replace("\x0b", " "))
+        if any(
+            ref and (compact == bac.norm(ref.replace("\x0b", " ")) or bac.text_similar(compact, bac.norm(ref.replace("\x0b", " "))))
+            for ref in (title, governing)
+        ):
+            continue
+        found.append(re.sub(r"\s+", " ", text)[:60])
+    return found
+
+
 CONTENT_LOSS_RATIO = 0.7
 CONTENT_LOSS_MIN_SOURCE_CHARS = 40
 
@@ -1637,6 +1669,17 @@ def _migrate_cmp_deck_body(
                             ),
                         }
                     )
+            hdr_title, hdr_gov = extract_header(src_slide, "content")
+            for text in dropped_header_text(src_slide, hdr_title, hdr_gov):
+                warnings.append(
+                    {
+                        "code": "HEADER_TEXT_DROPPED",
+                        "level": "info",
+                        "message": f"Source slide {src_idx + 1}: header text dropped: {text!r}",
+                        "src_index": src_idx,
+                        "text": text,
+                    }
+                )
             for dropped in dropped_unrepeated_pictures(src_slide, sw, sh, picture_counts):
                 warnings.append(
                     {
