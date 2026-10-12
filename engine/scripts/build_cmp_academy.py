@@ -1017,6 +1017,50 @@ def apply_academy_tables_on_slide(slide) -> None:
                     apply_academy_table_style(child.table)
 
 
+CONTENT_LOSS_RATIO = 0.7
+CONTENT_LOSS_MIN_SOURCE_CHARS = 40
+
+
+def slide_text_chars(slide) -> int:
+    """Non-whitespace characters in text frames and table cells (including grouped shapes)."""
+    total = 0
+
+    def _walk(shapes) -> None:
+        nonlocal total
+        for sh in shapes:
+            if sh.shape_type == MSO_SHAPE_TYPE.GROUP:
+                _walk(sh.shapes)
+                continue
+            if getattr(sh, "has_table", False) and sh.has_table:
+                for row in sh.table.rows:
+                    for cell in row.cells:
+                        total += len(re.sub(r"\s+", "", cell.text or ""))
+            elif getattr(sh, "has_text_frame", False) and sh.has_text_frame:
+                total += len(re.sub(r"\s+", "", sh.text_frame.text or ""))
+
+    _walk(slide.shapes)
+    return total
+
+
+def content_loss_warning(src_idx: int, source_chars: int, output_chars: int) -> dict | None:
+    """Warning when a migrated slide kept clearly less text than its source."""
+    if source_chars < CONTENT_LOSS_MIN_SOURCE_CHARS:
+        return None
+    if output_chars >= source_chars * CONTENT_LOSS_RATIO:
+        return None
+    return {
+        "code": "CONTENT_LOSS",
+        "level": "warn",
+        "message": (
+            f"Source slide {src_idx + 1}: text {source_chars} → {output_chars} chars "
+            f"({round(100 * output_chars / source_chars)}% kept)"
+        ),
+        "src_index": src_idx,
+        "source_chars": source_chars,
+        "output_chars": output_chars,
+    }
+
+
 def _count_charts(slide) -> int:
     n = 0
     for sh in slide.shapes:
@@ -1211,11 +1255,14 @@ def migrate_content_body(
     else:
         hide_empty_governing_placeholder(slide)
 
+    # A governing line longer than ph13 allows is hidden above; it must then stay in the body,
+    # otherwise the same text is excluded from both places and vanishes.
+    governing_used = governing if (gov and len(gov) <= bac.GOV_MAX_LEN) else None
     id_remap = copy_body_shapes_filtered(
         src_slide,
         slide,
         title,
-        governing,
+        governing_used,
         slide_width,
         slide_height,
         skip_connectors=radial,
@@ -1224,7 +1271,7 @@ def migrate_content_body(
         src_slide,
         slide,
         title,
-        governing,
+        governing_used,
         slide_width,
         slide_height,
         skip_connectors=radial,
@@ -1330,6 +1377,17 @@ def migrate_cmp_deck(
     plan = build_slide_plan(src, cfg)
     if not plan:
         raise ValueError("No slides to migrate.")
+    for skipped in sorted(cfg.skip_src_indices):
+        if skipped < len(src.slides):
+            warnings.append(
+                {
+                    "code": "SLIDE_SKIPPED",
+                    "level": "warn",
+                    "message": f"Source slide {skipped + 1} skipped by deck-kind config "
+                    f"({cfg.deck_kind})",
+                    "src_index": skipped,
+                }
+            )
     expected_slides = expected_output_slide_count(plan, cfg)
 
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -1532,6 +1590,10 @@ def _migrate_cmp_deck_body(
                         "src_index": src_idx,
                     }
                 )
+
+        loss = content_loss_warning(src_idx, slide_text_chars(src_slide), slide_text_chars(slide))
+        if loss:
+            warnings.append(loss)
 
     to_remove = [i for i, s in enumerate(prs.slides) if id(s.part) in initial_part_ids]
     for i in reversed(to_remove):
