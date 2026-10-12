@@ -155,12 +155,33 @@ def _is_source_footer_line(text: str) -> bool:
     return (text or "").strip().lower() in _FOOTER_SKIP_LINES
 
 
+def _is_content_placeholder(shape) -> bool:
+    """Body/object placeholder that carries real text (bullets of a PowerPoint-native deck).
+
+    Title, subtitle, date, footer and slide-number placeholders are rebuilt by the academy
+    layout and stay excluded. Dropping every placeholder also dropped the whole body of
+    "Title and Content" slides whenever it was too long to fit the governing line.
+    """
+    try:
+        ph_type = shape.placeholder_format.type
+    except Exception:
+        return False
+    if ph_type not in (
+        PP_PLACEHOLDER.BODY,
+        PP_PLACEHOLDER.OBJECT,
+        PP_PLACEHOLDER.VERTICAL_BODY,
+        PP_PLACEHOLDER.VERTICAL_OBJECT,
+    ):
+        return False
+    return bool(shape.has_text_frame and (shape.text_frame.text or "").strip())
+
+
 def is_body_shape(shape, title: str | None, governing: str | None) -> bool:
     from scripts.deck_migrate_config import skip_shape_names
 
     if shape.name in skip_shape_names():
         return False
-    if shape.shape_type == MSO_SHAPE_TYPE.PLACEHOLDER:
+    if shape.shape_type == MSO_SHAPE_TYPE.PLACEHOLDER and not _is_content_placeholder(shape):
         return False
 
     st = shape.shape_type

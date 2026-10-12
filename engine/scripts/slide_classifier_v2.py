@@ -1,7 +1,38 @@
 from __future__ import annotations
 
 from typing import Any
+
+from pptx.enum.shapes import MSO_SHAPE_TYPE
+
 from scripts.pptx_ingest import slide_text_blocks
+
+
+# Covers and section dividers are migrated as title text only, so everything else on the slide
+# is dropped. Only treat a slide as one when its non-title text is this short; otherwise fall back
+# to "content", which keeps every text box and picture.
+COVER_MAX_BODY_CHARS = 80
+
+
+def has_data_object(slide) -> bool:
+    """True when the slide carries a table or chart (also inside groups).
+
+    ``slide_text_blocks`` only sees text frames, so a slide whose body is a table looks like
+    "a big title and almost no text" and was classified as a cover. A cover is migrated as
+    title text only, which silently dropped the table and its content.
+    """
+
+    def _walk(shapes) -> bool:
+        for sh in shapes:
+            if getattr(sh, "has_table", False) and sh.has_table:
+                return True
+            if getattr(sh, "has_chart", False) and sh.has_chart:
+                return True
+            if sh.shape_type == MSO_SHAPE_TYPE.GROUP and _walk(sh.shapes):
+                return True
+        return False
+
+    return _walk(slide.shapes)
+
 
 class TextBand:
     def __init__(self, blocks: list[dict]):
@@ -110,6 +141,18 @@ def analyze_slide_layout(slide) -> dict[str, Any]:
         scores["content"] = 40
         if content_bands and len(blocks) > 3:
             scores["content"] += len(blocks) * 2
+
+    body_chars = 0
+    if blocks and title_band is not None:
+        title_ids = {id(b) for b in title_band.blocks}
+        body_chars = sum(len(b["text"]) for b in blocks if id(b) not in title_ids)
+    if blocks and (has_data_object(slide) or body_chars > COVER_MAX_BODY_CHARS):
+        # Tables/charts or a body of real text: never a cover or a section divider, because
+        # those render the title only and would drop the rest of the slide.
+        scores["cover"] = 0.0
+        scores["section"] = 0.0
+        if scores["toc"] <= 40:
+            scores["content"] = max(scores["content"], 41)
 
     best_layout = max(scores.items(), key=lambda x: x[1])[0]
 
