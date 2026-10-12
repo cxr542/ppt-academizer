@@ -35,7 +35,9 @@ from scripts.academy_layout_patterns import (  # noqa: E402
 )
 from scripts.academy_template import resolve_academy_template_path  # noqa: E402
 from scripts.deck_migrate_config import (  # noqa: E402
+    GENERIC_KIND,
     DeckMigrateConfig,
+    config_for_kind,
     migrate_config_for_source,
 )
 from scripts.pptx_ingest import iter_shapes, iter_shapes_abs, slide_notes_text  # noqa: E402
@@ -206,7 +208,8 @@ def classify_slide(
     index: int,
     part_cover_indices: frozenset[int] | None = None,
 ) -> str:
-    covers = part_cover_indices if part_cover_indices is not None else frozenset({0, 13})
+    # No CMP-specific default: slide 0 is the only implicit cover; part covers come from cfg.
+    covers = part_cover_indices if part_cover_indices is not None else frozenset({0})
     if index in covers:
         return "cover"
 
@@ -280,7 +283,7 @@ def build_slide_plan(
     cfg: DeckMigrateConfig | None = None,
 ) -> list[tuple[int, str]]:
     if cfg is None:
-        cfg = migrate_config_for_source("cmp-partner.pptx")
+        cfg = config_for_kind(GENERIC_KIND)
     plan: list[tuple[int, str]] = []
     for i, slide in enumerate(src.slides):
         if i in cfg.skip_src_indices:
@@ -308,7 +311,7 @@ def collect_section_titles(
     part_cover_indices: frozenset[int] | None = None,
 ) -> list[str]:
     """Section titles until the next part cover (간지1 목차용)."""
-    covers = part_cover_indices or frozenset({0, 13})
+    covers = part_cover_indices if part_cover_indices is not None else frozenset({0})
     titles: list[str] = []
     for i in range(after_src_idx, len(src.slides)):
         if i != after_src_idx and classify_slide(src.slides[i], i, covers) == "cover":

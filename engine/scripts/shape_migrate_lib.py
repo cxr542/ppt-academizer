@@ -51,7 +51,7 @@ OFFICE_EXT_URIS = (
 )
 
 HEADER_BOTTOM_EMU = 1_150_000
-SKIP_SHAPE_NAMES = {"Google Shape;520;p15"}
+# Deck-specific names live in config/deck_kinds.json (global_skip_shape_names); see deck_migrate_config.
 NUM_LEFT, NUM_TOP = 515_938, 360_540
 NUM_WIDTH = 400_000  # two-digit step numbers (10, 11, …)
 # Academy master: title x=781263 (= num left + narrow num width + 143497 gap).
@@ -156,7 +156,9 @@ def _is_source_footer_line(text: str) -> bool:
 
 
 def is_body_shape(shape, title: str | None, governing: str | None) -> bool:
-    if shape.name in SKIP_SHAPE_NAMES:
+    from scripts.deck_migrate_config import skip_shape_names
+
+    if shape.name in skip_shape_names():
         return False
     if shape.shape_type == MSO_SHAPE_TYPE.PLACEHOLDER:
         return False
