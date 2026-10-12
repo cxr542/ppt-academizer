@@ -249,6 +249,7 @@ async def academize(
     estimated_output_slides: str = Form(""),
     deck_title: str = Form(""),
     deck_subtitle: str = Form("PPT 아카데미화"),
+    editable_body: str = Form(""),
 ):
     tmp: Path | None = None
     scheduled_cleanup = False
@@ -263,6 +264,14 @@ async def academize(
         if estimated_output_slides.strip().isdigit():
             est_out = int(estimated_output_slides.strip())
 
+        # "" → server default (PPT_ACADEMIZER_EDITABLE_BODY, off); an explicit on/off wins.
+        eb = editable_body.strip().lower()
+        editable: bool | None = None
+        if eb in ("1", "true", "yes", "on"):
+            editable = True
+        elif eb in ("0", "false", "no", "off"):
+            editable = False
+
         out_path, warnings, slide_count, meta = await _run_blocking(
             academize_pptx,
             src,
@@ -272,6 +281,7 @@ async def academize(
             profile=profile,
             quality_mode=quality_mode,
             estimated_output_slides=est_out,
+            editable_body=editable,
         )
         scheduled_cleanup = True
         return _academize_file_response(

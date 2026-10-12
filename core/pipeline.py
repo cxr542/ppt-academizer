@@ -170,6 +170,7 @@ def _academize_migrate_cmp(
     *,
     tmp: Path,
     quality_mode: QualityMode = "standard",
+    editable_body: bool | None = None,
 ) -> tuple[Path, list[dict], int, dict[str, Any]]:
     from scripts.build_cmp_academy import migrate_cmp_deck
 
@@ -177,13 +178,13 @@ def _academize_migrate_cmp(
     out = tmp / f"academy-cmp-{stem}-{_stamp()}.pptx"
     try:
         output, migrate_warnings, slide_count = migrate_cmp_deck(
-            source, out, skip_ooxml_repair=False
+            source, out, skip_ooxml_repair=False, editable_body=editable_body
         )
     except ImportError as exc:
         # The OOXML repair step needs lxml/pyexpat; a broken native module there must not
         # fail the whole conversion. Retry without it and tell the user.
         output, migrate_warnings, slide_count = migrate_cmp_deck(
-            source, out, skip_ooxml_repair=True
+            source, out, skip_ooxml_repair=True, editable_body=editable_body
         )
         migrate_warnings.append({"code": "OOXML_REPAIR_FAILED", "message": str(exc)})
     raw_warnings = [
@@ -213,9 +214,11 @@ def _academize_migrate_cmp(
     from scripts.migrate_version import MIGRATE_ENGINE_VERSION
 
     deck_kind = "generic_partner"
+    editable_used = False
     for w in migrate_warnings:
         if w.get("code") == "MIGRATE_META":
             deck_kind = w.get("deck_kind", deck_kind)
+            editable_used = bool(w.get("editable_body", False))
             break
 
     meta = {
@@ -225,6 +228,7 @@ def _academize_migrate_cmp(
         "service_version": SERVICE_VERSION,
         "migrate_engine_version": MIGRATE_ENGINE_VERSION,
         "quality_mode": quality_mode,
+        "editable_body": editable_used,
     }
     return output, warnings, slide_count, meta
 
@@ -238,8 +242,12 @@ def academize_pptx(
     profile: Profile = "auto",
     quality_mode: str = "standard",
     estimated_output_slides: int | None = None,
+    editable_body: bool | None = None,
 ) -> tuple[Path, list[dict], int, dict[str, Any]]:
     """Convert *source* pptx to academy deck.
+
+    ``editable_body`` (migrate path only, opt-in): reflow image-led slides into document-style
+    text blocks. None → ``PPT_ACADEMIZER_EDITABLE_BODY`` (default off).
 
     Returns (output_path, warnings, slide_count, meta).
     """
@@ -262,7 +270,9 @@ def academize_pptx(
     )
 
     if route == "migrate_cmp":
-        return _academize_migrate_cmp(source, tmp=tmp, quality_mode=mode)
+        return _academize_migrate_cmp(
+            source, tmp=tmp, quality_mode=mode, editable_body=editable_body
+        )
     if route == "google_image":
         route = "spec"
     return _academize_spec_path(
