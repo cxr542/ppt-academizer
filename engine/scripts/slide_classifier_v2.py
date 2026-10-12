@@ -14,7 +14,8 @@ COVER_MAX_BODY_CHARS = 80
 
 
 def has_data_object(slide) -> bool:
-    """True when the slide carries a table or chart (also inside groups).
+    """True when the slide carries a table, chart, SmartArt, OLE object or any other graphic
+    frame (also inside groups).
 
     ``slide_text_blocks`` only sees text frames, so a slide whose body is a table looks like
     "a big title and almost no text" and was classified as a cover. A cover is migrated as
@@ -26,6 +27,10 @@ def has_data_object(slide) -> bool:
             if getattr(sh, "has_table", False) and sh.has_table:
                 return True
             if getattr(sh, "has_chart", False) and sh.has_chart:
+                return True
+            # SmartArt (dgm), embedded OLE, ... are <p:graphicFrame>s python-pptx does not expose
+            # through has_table/has_chart.
+            if str(getattr(sh, "_element", None).tag).endswith("}graphicFrame"):
                 return True
             if sh.shape_type == MSO_SHAPE_TYPE.GROUP and _walk(sh.shapes):
                 return True

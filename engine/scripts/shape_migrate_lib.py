@@ -15,6 +15,7 @@ from pptx.enum.shapes import MSO_CONNECTOR, MSO_SHAPE, MSO_SHAPE_TYPE, PP_PLACEH
 from pptx.enum.text import MSO_AUTO_SIZE
 from pptx.opc.constants import RELATIONSHIP_TYPE as RT
 from pptx.opc.package import Part
+from pptx.opc.packuri import PackURI
 from pptx.parts.chart import ChartPart
 from pptx.util import Pt
 
@@ -189,9 +190,13 @@ def is_body_shape(shape, title: str | None, governing: str | None) -> bool:
     left = int(shape.left or 0)
     w, h = int(shape.width or 0), int(shape.height or 0)
 
-    # A chart that starts inside the header band (e.g. 0.9in from the top) is body content.
-    # Only charts: other graphic frames (SmartArt/OLE) cannot be copied yet.
-    if (getattr(shape, "has_chart", False) and shape.has_chart) or st == MSO_SHAPE_TYPE.CHART:
+    # A chart, SmartArt or OLE object that starts inside the header band (e.g. 0.9in from the
+    # top) is body content; clone_shape_xml now copies the parts these frames depend on.
+    if (
+        (getattr(shape, "has_chart", False) and shape.has_chart)
+        or st == MSO_SHAPE_TYPE.CHART
+        or _is_graphic_frame(shape)
+    ):
         return True
 
     # Pictures / lines / groups / tables: do not drop large diagrams in the header band.
@@ -416,11 +421,98 @@ def _is_graphic_frame(shape) -> bool:
     return tag.endswith("}graphicFrame") or tag == "graphicFrame"
 
 
-def clone_shape_xml(shape, slide, off_l: int = 0, off_t: int = 0) -> None:
+def clone_shape_xml(
+    shape, slide, off_l: int = 0, off_t: int = 0, *, remap_relations: bool = True
+) -> None:
   newel = deepcopy(shape._element)
   _sanitize_shape_xml(newel)
   _offset_shape_xml(newel, off_l, off_t)
+  if remap_relations:
+    # A bare XML clone keeps r:id/r:embed/r:dm/... values that point into the SOURCE slide's
+    # relationships: dangling in the output (SmartArt, OLE, hyperlinks, picture fills, ...).
+    _remap_relations(newel, shape.part, slide.part)
   slide.shapes._spTree.insert_element_before(newel, "p:extLst")
+
+
+_R_PREFIX = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
+_RID_ATTR_RE = re.compile(rb'(\br:\w+=")(rId\d+)(")')
+_DATA_MODEL_EXT_RE = re.compile(rb'(dataModelExt[^>]*\brelId=")(rId\d+)(")')
+_DIAGRAM_DATA_CT = "application/vnd.openxmlformats-officedocument.drawingml.diagramData+xml"
+
+
+def _free_partname(package, tmpl: str, taken: set):
+    """Next unused partname, also avoiding parts created in this call but not yet reachable."""
+    existing = {str(p.partname) for p in package.iter_parts()} | taken
+    n = 1
+    while tmpl % n in existing:
+        n += 1
+    taken.add(tmpl % n)
+    return PackURI(tmpl % n)
+
+
+def _copy_relationship(src_rel, dst_part, memo: dict, taken: set) -> str:
+    """Recreate *src_rel* on *dst_part*; return the new rId."""
+    if src_rel.is_external:
+        return dst_part.relate_to(src_rel.target_ref, src_rel.reltype, is_external=True)
+    return dst_part.relate_to(
+        _clone_part(src_rel.target_part, dst_part.package, memo, taken), src_rel.reltype
+    )
+
+
+def _clone_part(src_part, package, memo: dict, taken: set):
+    """Copy a related part (and the parts it relates to) into *package*."""
+    if id(src_part) in memo:
+        return memo[id(src_part)]
+    new = Part(
+        _free_partname(package, _partname_template(src_part.partname), taken),
+        src_part.content_type,
+        package,
+        src_part.blob,
+    )
+    memo[id(src_part)] = new
+    mapping: dict[str, str] = {}
+    for rid, rel in src_part.rels.items():
+        mapping[rid] = _copy_relationship(rel, new, memo, taken)
+    if any(old != new_rid for old, new_rid in mapping.items()):
+        new._blob = _RID_ATTR_RE.sub(
+            lambda m: m.group(1) + mapping.get(m.group(2).decode(), m.group(2).decode()).encode() + m.group(3),
+            new.blob,
+        )
+    return new
+
+
+def _remap_relations(element, src_part, dst_part) -> None:
+    """Point every relationship attribute inside *element* at a copy on *dst_part*."""
+    memo: dict = {}
+    taken: set = set()
+    mapping: dict[str, str] = {}
+    for node in element.iter():
+        for attr, old in list(node.attrib.items()):
+            if not attr.startswith(_R_PREFIX) or old in mapping:
+                if attr.startswith(_R_PREFIX) and old in mapping:
+                    node.set(attr, mapping[old])
+                continue
+            rel = src_part.rels.get(old)
+            if rel is None:
+                continue
+            mapping[old] = _copy_relationship(rel, dst_part, memo, taken)
+            node.set(attr, mapping[old])
+    # SmartArt: the data model names the slide-level drawing part by rId (dsp:dataModelExt relId).
+    for new in list(memo.values()):
+        if new.content_type != _DIAGRAM_DATA_CT:
+            continue
+        m = _DATA_MODEL_EXT_RE.search(new.blob)
+        if not m:
+            continue
+        old_rid = m.group(2).decode()
+        rel = src_part.rels.get(old_rid)
+        if rel is None:
+            continue
+        if old_rid not in mapping:
+            mapping[old_rid] = _copy_relationship(rel, dst_part, memo, taken)
+        new._blob = _DATA_MODEL_EXT_RE.sub(
+            lambda mm: mm.group(1) + mapping[old_rid].encode() + mm.group(3), new.blob, count=1
+        )
 
 
 _C_NS = "http://schemas.openxmlformats.org/drawingml/2006/chart"
@@ -495,7 +587,7 @@ def clone_chart_frame(shape, slide, off_l: int = 0, off_t: int = 0) -> bool:
     if new_rid is None:
         return False
     n_before = len(slide.shapes)
-    clone_shape_xml(shape, slide, off_l, off_t)
+    clone_shape_xml(shape, slide, off_l, off_t, remap_relations=False)  # chart part copied above
     if len(slide.shapes) <= n_before:
         return False
     frame = slide.shapes._spTree.xpath("./p:graphicFrame")[-1]
