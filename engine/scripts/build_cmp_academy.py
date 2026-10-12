@@ -1019,6 +1019,22 @@ def apply_academy_tables_on_slide(slide) -> None:
                     apply_academy_table_style(child.table)
 
 
+def validator_subprocess_env() -> dict[str, str]:
+    """Environment for the post-save validator subprocess.
+
+    The validator imports ``scripts.safe_xml``; without the engine root on PYTHONPATH it died
+    with ``ModuleNotFoundError: No module named 'scripts'`` and the run only reported an
+    opaque OOXML_VALIDATE_FAILED. (The Docker image sets PYTHONPATH itself, plain local runs
+    did not.)
+    """
+    import os
+
+    env = dict(os.environ)
+    parts = [str(PPT_TEST)] + [p for p in env.get("PYTHONPATH", "").split(os.pathsep) if p]
+    env["PYTHONPATH"] = os.pathsep.join(dict.fromkeys(parts))
+    return env
+
+
 def picture_hash_counts(prs) -> dict[str, int]:
     """In how many slides each top-level picture (by content hash) appears."""
     counts: dict[str, int] = {}
@@ -1845,6 +1861,7 @@ def _migrate_cmp_deck_body(
             [sys.executable, str(validate_script), str(output)],
             capture_output=True,
             text=True,
+            env=validator_subprocess_env(),
         )
         if proc.returncode != 0:
             raw = (proc.stderr or proc.stdout or "validate_pptx failed").strip()

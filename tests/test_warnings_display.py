@@ -41,6 +41,29 @@ def test_syntax_error_hidden() -> None:
     assert "검증" in w["message"] or "PowerPoint" in w["message"]
 
 
+def test_validate_unavailable_token_hidden() -> None:
+    w = format_warning(
+        {
+            "code": "OOXML_VALIDATE_FAILED",
+            "message": "validate_pptx_unavailable",
+        }
+    )
+    assert "validate_pptx_unavailable" not in w["message"]
+    assert "PowerPoint" in w["message"] or "검증" in w["message"]
+
+
+def test_repair_import_error_hidden() -> None:
+    w = format_warning(
+        {
+            "code": "OOXML_REPAIR_FAILED",
+            "message": "dlopen(pyexpat): Symbol not found",
+        }
+    )
+    assert "dlopen" not in w["message"]
+    assert "자동 정리" in w["message"]
+    assert w["level"] == "warn"
+
+
 def test_format_warnings_skips_meta() -> None:
     out = format_warnings([{"code": "MIGRATE_META", "deck_kind": "cmp"}])
     assert out == []

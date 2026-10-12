@@ -175,9 +175,17 @@ def _academize_migrate_cmp(
 
     stem = source.stem.replace(" ", "-")[:40]
     out = tmp / f"academy-cmp-{stem}-{_stamp()}.pptx"
-    output, migrate_warnings, slide_count = migrate_cmp_deck(
-        source, out, skip_ooxml_repair=False
-    )
+    try:
+        output, migrate_warnings, slide_count = migrate_cmp_deck(
+            source, out, skip_ooxml_repair=False
+        )
+    except ImportError as exc:
+        # The OOXML repair step needs lxml/pyexpat; a broken native module there must not
+        # fail the whole conversion. Retry without it and tell the user.
+        output, migrate_warnings, slide_count = migrate_cmp_deck(
+            source, out, skip_ooxml_repair=True
+        )
+        migrate_warnings.append({"code": "OOXML_REPAIR_FAILED", "message": str(exc)})
     raw_warnings = [
         dict(w)
         for w in migrate_warnings

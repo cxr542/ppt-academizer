@@ -19,15 +19,27 @@ def _src_slide_label(w: dict) -> int | None:
 def _sanitize_technical_message(msg: str, code: str) -> str:
     if not msg:
         return ""
+    if msg == "validate_pptx_unavailable":
+        return (
+            "PPTX 구조 자동 검증을 실행하지 못했습니다. "
+            "변환 파일은 저장되었으니 PowerPoint에서 열어 확인해 주세요."
+        )
     if (
         _TRACEBACK_RE.search(msg)
         or "ModuleNotFoundError" in msg
         or "ImportError" in msg
         or "SyntaxError" in msg
+        or "dlopen(" in msg
+        or "Symbol not found" in msg
     ):
         if code == "OOXML_VALIDATE_FAILED":
             return (
                 "PPTX 구조 자동 검증을 실행하지 못했습니다. "
+                "변환 파일은 저장되었으니 PowerPoint에서 열어 확인해 주세요."
+            )
+        if code == "OOXML_REPAIR_FAILED":
+            return (
+                "PPTX 구조 자동 정리를 실행하지 못했습니다. "
                 "변환 파일은 저장되었으니 PowerPoint에서 열어 확인해 주세요."
             )
         return "내부 검증 단계에서 오류가 있었습니다. 변환 파일은 저장되었습니다."
@@ -88,6 +100,11 @@ def format_warning(w: dict) -> dict:
             or "PPTX 구조 자동 검증에 실패했습니다. 파일은 저장되었습니다.",
         ),
         "OOXML_VALIDATE_SKIPPED": ("info", "PPTX 구조 자동 검증은 건너뛰었습니다."),
+        "OOXML_REPAIR_FAILED": (
+            "warn",
+            _sanitize_technical_message(str(w.get("message") or ""), code)
+            or "PPTX 구조 자동 정리에 실패했습니다. 파일은 저장되었습니다.",
+        ),
         "SVG_RASTERIZED": ("info", ""),
         "PP_REPAIR_APPLIED": (
             "info",
