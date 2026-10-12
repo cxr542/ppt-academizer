@@ -111,6 +111,22 @@ def _is_visual_heavy_slide(slide) -> bool:
     return visual_shapes >= 10 and text_shapes >= 5
 
 
+def _looks_like_unsized_cover(layout_info: dict, blocks: list[dict]) -> bool:
+    """First slide with few text blocks whose font sizes are inherited (not set on runs).
+
+    The classifier's cover score needs an explicit run font size (>= 32pt); decks that
+    inherit sizes from the layout/master (typical of AI-generated pptx) never reach it.
+    Only a structural cover (<=4 blocks, nothing beyond title/subtitle bands) qualifies.
+    """
+    if not blocks or len(blocks) > 4:
+        return False
+    if any(b.get("font_size") for b in blocks):
+        return False
+    if layout_info["layout"] in ("toc", "empty"):
+        return False
+    return not _is_toc_like(blocks)
+
+
 def extract_front_matter(
     prs: Presentation,
     *,
@@ -130,7 +146,11 @@ def extract_front_matter(
     layout0 = s0.slide_layout.name
     layout_info0 = analyze_slide_layout(s0)
 
-    if layout0 in ("2_표지", "표지") or layout_info0["layout"] == "cover":
+    if (
+        layout0 in ("2_표지", "표지")
+        or layout_info0["layout"] == "cover"
+        or _looks_like_unsized_cover(layout_info0, b0)
+    ):
         if b0:
             cover = _compose_cover_text(b0)
             specs.append(
@@ -161,7 +181,13 @@ def extract_front_matter(
         merged1 = "\n".join(x["text"] for x in b1)
         layout_info1 = analyze_slide_layout(s1)
 
-        if layout1 in ("목차", "TOC") or layout_info1["layout"] == "toc":
+        if (
+            layout1 in ("목차", "TOC")
+            or layout_info1["layout"] == "toc"
+            # Classifier counts one block per numbered line; a single text box holding the
+            # whole numbered list (common in AI-generated decks) needs the line-level check.
+            or _is_toc_like(b1)
+        ):
             toc_lines = _numbered_toc_lines(merged1) or [x["text"] for x in b1]
             toc_text = "\n".join(toc_lines)
             specs.append(

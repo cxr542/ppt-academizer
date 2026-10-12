@@ -178,11 +178,11 @@ def _visible_non_text_shape_line_count(path: Path, slide_number: int) -> int:
 
 
 @pytest.mark.skipif(not LAB_FIXTURE.is_file(), reason="real-world lab fixture is local-only")
-def test_lab_fixture_routes_to_spec() -> None:
+def test_lab_fixture_is_detected_as_lab_lecture() -> None:
     profile, meta = detect_deck_profile(LAB_FIXTURE)
 
-    assert profile == "spec"
-    assert meta.get("reason") == "lab_lecture_structure"
+    assert profile == "migrate_cmp"
+    assert meta.get("reason") == "lab_lecture_structure_but_forced_migrate"
 
 
 @pytest.mark.skipif(not LAB_FIXTURE.is_file(), reason="real-world lab fixture is local-only")

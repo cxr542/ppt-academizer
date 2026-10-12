@@ -264,7 +264,9 @@ def academize_pptx(
         tmp=tmp,
         route=route,
         quality_mode=mode,
-        lab_lecture_layout=route_meta.get("reason") == "lab_lecture_structure",
+        # reason carries a "_but_forced_migrate" suffix, so match the prefix; otherwise an
+        # explicit profile="spec" on a lab deck silently loses the lab layout.
+        lab_lecture_layout=str(route_meta.get("reason", "")).startswith("lab_lecture_structure"),
     )
 
 

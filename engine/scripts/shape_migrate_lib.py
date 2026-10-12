@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import re
 import shutil
 from copy import deepcopy
 from pathlib import Path
@@ -12,6 +13,9 @@ from pptx.dml.color import RGBColor
 from pptx.enum.dml import MSO_COLOR_TYPE, MSO_FILL, MSO_THEME_COLOR
 from pptx.enum.shapes import MSO_CONNECTOR, MSO_SHAPE, MSO_SHAPE_TYPE, PP_PLACEHOLDER
 from pptx.enum.text import MSO_AUTO_SIZE
+from pptx.opc.constants import RELATIONSHIP_TYPE as RT
+from pptx.opc.package import Part
+from pptx.parts.chart import ChartPart
 from pptx.util import Pt
 
 ACADEMY = Path(
@@ -391,6 +395,85 @@ def clone_shape_xml(shape, slide, off_l: int = 0, off_t: int = 0) -> None:
   slide.shapes._spTree.insert_element_before(newel, "p:extLst")
 
 
+_C_NS = "http://schemas.openxmlformats.org/drawingml/2006/chart"
+_R_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+
+
+def _partname_template(partname: str) -> str:
+    """'/ppt/charts/chart3.xml' -> '/ppt/charts/chart%d.xml'."""
+    return re.sub(r"\d+(\.\w+)$", r"%d\1", str(partname))
+
+
+def copy_chart_part(shape, dst_slide):
+    """Copy a chart's part (plus workbook/style/colors parts) into dst_slide's package.
+
+    Cloning only the graphicFrame XML leaves ``c:chart r:id`` dangling: the chart part
+    lives in the *source* package, so the output has an empty/broken chart. Returns the
+    new rId on *dst_slide*, or None when the chart cannot be copied.
+    """
+    try:
+        src_part = shape.chart.part
+    except Exception:
+        return None
+    package = dst_slide.part.package
+    chart_part = ChartPart.load(
+        package.next_partname(_partname_template(src_part.partname)),
+        src_part.content_type,
+        package,
+        src_part.blob,
+    )
+    rid_map: dict[str, str] = {}
+    for old_rid, rel in src_part.rels.items():
+        if rel.is_external:
+            continue
+        tgt = rel.target_part
+        new_tgt = Part(
+            package.next_partname(_partname_template(tgt.partname)),
+            tgt.content_type,
+            package,
+            tgt.blob,
+        )
+        rid_map[old_rid] = chart_part.relate_to(new_tgt, rel.reltype)
+    for el in chart_part._element.iter():
+        for attr in (f"{{{_R_NS}}}id", f"{{{_R_NS}}}embed"):
+            old = el.get(attr)
+            if old in rid_map:
+                el.set(attr, rid_map[old])
+    _normalize_axis_ids(chart_part._element)
+    return dst_slide.part.relate_to(chart_part, RT.CHART)
+
+
+def _normalize_axis_ids(chart_el) -> None:
+    """Rewrite negative c:axId/c:crossAx values as unsigned (schema: xs:unsignedInt).
+
+    python-pptx-generated charts carry ids like -2068027336; PowerPoint accepts them but
+    the OOXML validator does not. The same mod-2**32 mapping keeps axId/crossAx pairs aligned.
+    """
+    for tag in ("axId", "crossAx"):
+        for el in chart_el.iter(f"{{{_C_NS}}}{tag}"):
+            try:
+                val = int(el.get("val", ""))
+            except ValueError:
+                continue
+            if val < 0:
+                el.set("val", str(val + 2**32))
+
+
+def clone_chart_frame(shape, slide, off_l: int = 0, off_t: int = 0) -> bool:
+    """Clone a chart graphicFrame and re-point it at a copied chart part."""
+    new_rid = copy_chart_part(shape, slide)
+    if new_rid is None:
+        return False
+    n_before = len(slide.shapes)
+    clone_shape_xml(shape, slide, off_l, off_t)
+    if len(slide.shapes) <= n_before:
+        return False
+    frame = slide.shapes._spTree.xpath("./p:graphicFrame")[-1]
+    for ch in frame.iter(f"{{{_C_NS}}}chart"):
+        ch.set(f"{{{_R_NS}}}id", new_rid)
+    return True
+
+
 def _copy_fill(dst_shape, src_shape) -> None:
     try:
         src, dst = src_shape.fill, dst_shape.fill
@@ -685,10 +768,9 @@ def copy_shape_hybrid(
         add_picture_safe(dst_slide, shape, left, top)
         if len(dst_slide.shapes) <= n_before:
             clone_shape_xml(shape, dst_slide, off_l, off_t)
-    elif getattr(shape, "has_chart", False) and shape.has_chart:
-        clone_shape_xml(shape, dst_slide, off_l, off_t)
-    elif st == MSO_SHAPE_TYPE.CHART:
-        clone_shape_xml(shape, dst_slide, off_l, off_t)
+    elif (getattr(shape, "has_chart", False) and shape.has_chart) or st == MSO_SHAPE_TYPE.CHART:
+        # Chart parts must travel with the frame; a bare XML clone leaves c:chart r:id dangling.
+        clone_chart_frame(shape, dst_slide, off_l, off_t)
     elif _is_graphic_frame(shape):
         clone_shape_xml(shape, dst_slide, off_l, off_t)
     elif st == MSO_SHAPE_TYPE.TABLE:
