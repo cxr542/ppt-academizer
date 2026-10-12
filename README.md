@@ -39,8 +39,13 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 
 변환 로직은 **`engine/`** 에 번들되어 있습니다. monorepo의 `ppt-test` 없이도 동작합니다.
 
+> **주의:** `engine/`은 v1.6.6부터 **이 저장소에서 직접 수정**합니다(차트 복사, 분류기, SVG 그래픽 등).
+> ppt-test 사본이 더 오래되어, 동기화하면 이 수정들이 사라집니다. 그래서
+> `scripts/sync_engine_from_ppt_test.py`는 `engine/`이 있으면 `--force` 없이는 아무것도 하지 않고,
+> `--force`여도 기존 `engine/`을 `engine.bak-<시각>/`로 옮겨 둡니다(삭제하지 않음).
+
 ```bash
-# ppt-test에서 엔진을 갱신할 때만 (monorepo 경로)
+# engine/이 없는 새 체크아웃에서만 그대로 실행됩니다. 이미 있으면 --force 필요(백업 후 교체).
 python scripts/sync_engine_from_ppt_test.py
 ```
 

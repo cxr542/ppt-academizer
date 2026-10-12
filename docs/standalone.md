@@ -31,7 +31,7 @@ ppt-test는 **개발 시 엔진 소스**로 두고, 배포물에는 `engine/` �
 
 | 작업 | 이유 |
 |------|------|
-| 엔진 **소스 수정** | 정본은 ppt-test; academizer는 `sync_engine_from_ppt_test.py`로 반영 |
+| 엔진 **소스 수정** | v1.6.6부터 **academizer의 `engine/`이 정본**(ppt-test 사본이 더 오래됨). 동기화는 수정을 되돌리므로 `--force` + 백업이 필요 |
 | `build_academy_deck.py` CLI | academizer에 포함하지 않음 |
 | `validate_pptx.py` 전체 CI | 선택 — academizer 스모크로 대부분 커버 |
 
@@ -50,9 +50,13 @@ ppt-test는 **개발 시 엔진 소스**로 두고, 배포물에는 `engine/` �
 
 ## monorepo에서 ppt-test만 수정했을 때
 
+> ppt-test의 변경을 가져오려는 경우에만 해당합니다. `engine/`이 이미 있으면 `--force`가 필요하며,
+> 기존 `engine/`은 `engine.bak-<시각>/`로 옮겨집니다. 가져온 뒤 백업과 diff해 academizer 쪽 수정을
+> 다시 적용해야 합니다.
+
 ```bash
 cd apps/ppt-academizer
-python scripts/sync_engine_from_ppt_test.py
+python scripts/sync_engine_from_ppt_test.py --force
 .venv/bin/python -m pytest tests/ -q
 .venv/bin/python scripts/run_smoke_tests.py
 ```

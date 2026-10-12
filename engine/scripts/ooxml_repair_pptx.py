@@ -20,7 +20,8 @@ def _resolve_office_dir() -> Path:
         return legacy
     raise ModuleNotFoundError(
         "validators (OOXML office bundle missing). "
-        "Run: cd apps/ppt-academizer && python scripts/sync_engine_from_ppt_test.py"
+        "Restore engine/office from git (git checkout -- engine/office). The sync script replaces "
+        "engine/ with an older copy and needs --force: scripts/sync_engine_from_ppt_test.py"
     )
 
 A_NS = "http://schemas.openxmlformats.org/drawingml/2006/main"
