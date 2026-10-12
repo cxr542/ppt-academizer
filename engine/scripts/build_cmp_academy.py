@@ -1019,6 +1019,64 @@ def apply_academy_tables_on_slide(slide) -> None:
                     apply_academy_table_style(child.table)
 
 
+def picture_hash_counts(prs) -> dict[str, int]:
+    """In how many slides each top-level picture (by content hash) appears."""
+    counts: dict[str, int] = {}
+    for slide in prs.slides:
+        seen: set[str] = set()
+        for sh in slide.shapes:
+            if sh.shape_type != MSO_SHAPE_TYPE.PICTURE:
+                continue
+            try:
+                seen.add(sh.image.sha1)
+            except Exception:
+                continue
+        for digest in seen:
+            counts[digest] = counts.get(digest, 0) + 1
+    return counts
+
+
+def dropped_unrepeated_pictures(
+    src_slide,
+    slide_width: int,
+    slide_height: int,
+    hash_counts: dict[str, int],
+) -> list[dict]:
+    """Large pictures the body filter treats as a slide background that appear on one slide only.
+
+    Design backgrounds repeat across slides and are dropped on purpose. A big picture that
+    shows up once is more likely content (a full-width screenshot or infographic), so it is
+    reported instead of vanishing silently. Stock-placeholder stubs have their own warning.
+    """
+    permissive = is_raster_heavy_slide(src_slide, slide_width, slide_height)
+    keep_full = is_picture_only_slide(src_slide)
+    found: list[dict] = []
+    for sh in src_slide.shapes:
+        if sh.shape_type != MSO_SHAPE_TYPE.PICTURE or is_stock_placeholder_picture(sh):
+            continue
+        if not should_drop_body_picture(
+            sh,
+            slide_width,
+            slide_height,
+            permissive_raster=permissive,
+            keep_full_frame_image=keep_full,
+        ):
+            continue
+        try:
+            digest = sh.image.sha1
+        except Exception:
+            continue
+        if hash_counts.get(digest, 0) >= 2:
+            continue
+        found.append(
+            {
+                "width_pct": round(100 * int(sh.width or 0) / max(slide_width, 1)),
+                "height_pct": round(100 * int(sh.height or 0) / max(slide_height, 1)),
+            }
+        )
+    return found
+
+
 CONTENT_LOSS_RATIO = 0.7
 CONTENT_LOSS_MIN_SOURCE_CHARS = 40
 
@@ -1493,6 +1551,7 @@ def _migrate_cmp_deck_body(
     skip_relayout_slides: list = []
     canvas_rescaled_slides: list = []
     preserve_body_style_slides: list = []
+    picture_counts = picture_hash_counts(src)
     for src_idx, kind in plan:
         src_slide = src.slides[src_idx]
         if kind == "cover":
@@ -1578,6 +1637,19 @@ def _migrate_cmp_deck_body(
                             ),
                         }
                     )
+            for dropped in dropped_unrepeated_pictures(src_slide, sw, sh, picture_counts):
+                warnings.append(
+                    {
+                        "code": "PICTURE_DROPPED",
+                        "level": "warn",
+                        "message": (
+                            f"Source slide {src_idx + 1}: a {dropped['width_pct']}%×"
+                            f"{dropped['height_pct']}% picture was dropped as a background"
+                        ),
+                        "src_index": src_idx,
+                        **dropped,
+                    }
+                )
             if placeholder_n:
                 warnings.append(
                     {
