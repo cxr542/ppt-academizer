@@ -1,8 +1,7 @@
 # Bundled PPT build engine
 
-Originally synced from ppt-test. Since v1.6.6 this directory is **edited directly in
-this repo** and is newer than ppt-test. Re-running the sync reverts those fixes, so
-`scripts/sync_engine_from_ppt_test.py` refuses to run when `engine/` exists unless
-`--force` is given (and then keeps `engine.bak-<timestamp>/`).
+This directory is the **canonical engine** and is edited directly in this repo. It started as
+a copy of the former `ppt-test` project, which was archived on 2026-10-12 (it was outdated and had
+no git history); there is no sync script any more. Run `python -m pytest tests/ -q` after changes.
 
 Current engine version: **1.2.9**
