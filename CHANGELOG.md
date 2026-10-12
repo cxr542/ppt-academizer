@@ -2,6 +2,10 @@
 
 형식: [Keep a Changelog](https://keepachangelog.com/). 상세는 [releases/](releases/) 참고.
 
+## [Unreleased]
+
+Chore: `scripts/sync_engine_from_ppt_test.py`가 `engine/`을 확인 없이 삭제하고 오래된 ppt-test 사본으로 덮어써 v1.6.6 이후의 수정이 사라지던 위험을 막았습니다. `engine/`이 있으면 `--force` 없이는 아무것도 하지 않고, `--force`여도 `engine.bak-<시각>/`로 옮겨 둡니다. 문서(README, docs/standalone.md, engine/README.md)는 "`engine/`은 이 저장소에서 직접 수정"으로 정정했습니다.  
+
 ## [1.6.11] - 2026-10-12
 
 Add: 경고 `PICTURE_DROPPED` — 슬라이드를 거의 덮는 큰 그림을 "디자인 배경"으로 판단해 제외했는데 그 그림이 **한 슬라이드에만 나올 때**(내용 이미지일 가능성) 알려 줍니다. 여러 슬라이드에 반복되는 배경은 기존처럼 조용히 제외합니다. 제거 동작 자체는 바꾸지 않았습니다.
