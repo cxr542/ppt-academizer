@@ -512,6 +512,10 @@ def finalize_pptx_package(path: Path) -> int:
                     or "ppt/slideMasters/" in rel
                 ):
                     raw = _normalize_slide_connectors(raw)
+                if rel.startswith("ppt/diagrams/"):
+                    # SmartArt parts are copied as PowerPoint wrote them: the data model's
+                    # dsp:dataModelExt names the drawing part, and stripping it is not needed.
+                    continue
                 raw = _strip_office_extensions_xml(raw)
                 raw = _strip_text_outline_xml(raw)
                 xml_file.write_bytes(raw)
