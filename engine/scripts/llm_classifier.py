@@ -16,12 +16,15 @@ def analyze_slide_with_llm(slide, slide_index: int = -1) -> dict[str, Any]:
     """임시로 LLM 대신 V2 휴리스틱을 사용합니다 (서버 타임아웃 방지)"""
     blocks = slide_text_blocks(slide)
     if not blocks:
+        from scripts.slide_classifier_v2 import has_data_object
+
         return {
             "layout": "empty",
             "title": "",
             "governing": "",
             "kicker": "",
             "blocks": [],
+            "body_heavy": has_data_object(slide),
         }
 
     from scripts.slide_classifier_v2 import analyze_slide_layout
@@ -33,4 +36,5 @@ def analyze_slide_with_llm(slide, slide_index: int = -1) -> dict[str, Any]:
         "governing": fallback_info.get("governing", ""),
         "kicker": fallback_info.get("kicker", ""),
         "blocks": blocks,
+        "body_heavy": bool(fallback_info.get("body_heavy")),
     }

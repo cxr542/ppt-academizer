@@ -289,7 +289,9 @@ def build_slide_plan(
         if i in cfg.skip_src_indices:
             continue
         if i == 0:
-            plan.append((i, "cover"))
+            # Slide 0 is the cover unless it carries a table/chart or a real body of text:
+            # a cover is migrated as title text only, so those would be dropped.
+            plan.append((i, "content" if analyze_slide_with_llm(slide).get("body_heavy") else "cover"))
             continue
         kind = classify_slide(slide, i, cfg.part_cover_indices)
         if kind == "empty":
@@ -1061,6 +1063,30 @@ def content_loss_warning(src_idx: int, source_chars: int, output_chars: int) -> 
     }
 
 
+def _count_tables(slide) -> int:
+    n = 0
+    for sh in slide.shapes:
+        if getattr(sh, "has_table", False) and sh.has_table:
+            n += 1
+        elif sh.shape_type == MSO_SHAPE_TYPE.GROUP:
+            n += _count_tables(sh)
+    return n
+
+
+def table_loss_warning(src_idx: int, tables_in: int, tables_out: int) -> dict | None:
+    """Warning when a slide lost tables, however little text they held."""
+    if tables_in <= tables_out:
+        return None
+    return {
+        "code": "CONTENT_LOSS",
+        "level": "warn",
+        "message": f"Source slide {src_idx + 1}: tables {tables_in} → {tables_out}",
+        "src_index": src_idx,
+        "tables_in": tables_in,
+        "tables_out": tables_out,
+    }
+
+
 def _count_charts(slide) -> int:
     n = 0
     for sh in slide.shapes:
@@ -1594,6 +1620,10 @@ def _migrate_cmp_deck_body(
         loss = content_loss_warning(src_idx, slide_text_chars(src_slide), slide_text_chars(slide))
         if loss:
             warnings.append(loss)
+        else:
+            tbl_loss = table_loss_warning(src_idx, _count_tables(src_slide), _count_tables(slide))
+            if tbl_loss:
+                warnings.append(tbl_loss)
 
     to_remove = [i for i, s in enumerate(prs.slides) if id(s.part) in initial_part_ids]
     for i in reversed(to_remove):

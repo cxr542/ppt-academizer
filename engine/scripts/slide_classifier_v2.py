@@ -146,7 +146,9 @@ def analyze_slide_layout(slide) -> dict[str, Any]:
     if blocks and title_band is not None:
         title_ids = {id(b) for b in title_band.blocks}
         body_chars = sum(len(b["text"]) for b in blocks if id(b) not in title_ids)
-    if blocks and (has_data_object(slide) or body_chars > COVER_MAX_BODY_CHARS):
+    data_object = has_data_object(slide)
+    body_heavy = data_object or (bool(blocks) and body_chars > COVER_MAX_BODY_CHARS)
+    if blocks and body_heavy:
         # Tables/charts or a body of real text: never a cover or a section divider, because
         # those render the title only and would drop the rest of the slide.
         scores["cover"] = 0.0
@@ -162,4 +164,6 @@ def analyze_slide_layout(slide) -> dict[str, Any]:
         "title": title_text,
         "governing": gov_text,
         "blocks": blocks,
+        # True when a cover/section rendering (title only) would drop real content.
+        "body_heavy": body_heavy,
     }
