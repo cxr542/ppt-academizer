@@ -2,6 +2,11 @@
 
 형식: [Keep a Changelog](https://keepachangelog.com/). 상세는 [releases/](releases/) 참고.
 
+## [1.6.12] - 2026-10-12
+
+Fix: **헤더 영역(상단 약 1.26in)에서 시작하는 차트가 무조건 제외되던 문제** — 차트는 이제 본문으로 이식합니다. SmartArt/OLE 등 다른 그래픽 프레임은 아직 복사할 수 없어 그대로입니다.  
+Add: 경고 `HEADER_TEXT_DROPPED`(info) — 제목·부제와 겹치지 않도록 상단 영역의 텍스트(카테고리 태그·날짜 등)를 제외할 때 그 텍스트를 알려 줍니다. 제외 동작 자체는 바꾸지 않았습니다. 실덱 7개 중 5개는 해당 없음, AI 생성 덱 1개에서 "TECHNICAL" 태그가 보고됐습니다.  
+
 ## [Unreleased]
 
 Chore: `scripts/sync_engine_from_ppt_test.py`가 `engine/`을 확인 없이 삭제하고 오래된 ppt-test 사본으로 덮어써 v1.6.6 이후의 수정이 사라지던 위험을 막았습니다. `engine/`이 있으면 `--force` 없이는 아무것도 하지 않고, `--force`여도 `engine.bak-<시각>/`로 옮겨 둡니다. 문서(README, docs/standalone.md, engine/README.md)는 "`engine/`은 이 저장소에서 직접 수정"으로 정정했습니다.  

@@ -189,6 +189,11 @@ def is_body_shape(shape, title: str | None, governing: str | None) -> bool:
     left = int(shape.left or 0)
     w, h = int(shape.width or 0), int(shape.height or 0)
 
+    # A chart that starts inside the header band (e.g. 0.9in from the top) is body content.
+    # Only charts: other graphic frames (SmartArt/OLE) cannot be copied yet.
+    if (getattr(shape, "has_chart", False) and shape.has_chart) or st == MSO_SHAPE_TYPE.CHART:
+        return True
+
     # Pictures / lines / groups / tables: do not drop large diagrams in the header band.
     if st in (
         MSO_SHAPE_TYPE.PICTURE,
