@@ -4,6 +4,9 @@
 
 ## [Unreleased]
 
+Fix: 변환 후 **OOXML 검증 하위 프로세스가 `PYTHONPATH` 없이 실행되어 항상 실패**하던 문제 — 검증기가 `scripts.safe_xml`을 임포트하는데 엔진 경로가 없어 `ModuleNotFoundError`로 죽고, 결과에는 `validate_pptx_unavailable`이라는 내부 토큰의 정보 경고만 남았습니다. Docker 이미지는 `PYTHONPATH`를 설정해 운영에서는 정상이었고, 로컬 실행에서만 검증이 건너뛰어졌습니다. 이제 엔진 경로를 넘겨 검증이 실제로 동작합니다.  
+Add: 방어 장치 — 내부 토큰·`dlopen`/`Symbol not found` 같은 네이티브 모듈 오류를 사용자용 한국어 문구로 바꾸고, OOXML 정리 단계가 `ImportError`로 실행조차 안 되면 그 단계만 건너뛰고 재변환하며 `OOXML_REPAIR_FAILED` 경고를 냅니다(로컬 `260522` 브랜치 작업을 이식).  
+
 Chore: **`ppt-test` 폐기** — `ppt-test`는 오래된 사본(최종 수정 2026-05-20, git 이력 없음)이라 `engine/`이 정본이 되었고, 동기화 스크립트(`sync_engine_from_ppt_test.py`)와 그 가드, `core/ppt_test_path.py`의 ppt-test 폴백(엔진이 없을 때 오래된 사본으로 조용히 변환)을 제거했습니다. 이제 엔진이 없으면 `FileNotFoundError`입니다. ppt-test에만 있던 테스트 7개 파일을 `tests/`로 이식했습니다(옛 라우팅 기대값 1건은 현재 동작에 맞춤). 문서(README, docs/standalone.md, engine/README.md)를 정정했습니다.  
 
 ## [1.6.13] - 2026-10-12
