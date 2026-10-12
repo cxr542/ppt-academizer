@@ -90,3 +90,53 @@ def test_table_loss_warns_even_for_tiny_tables() -> None:
     w = table_loss_warning(0, 1, 0)
     assert w and w["code"] == "CONTENT_LOSS"
     assert "1" in format_warning(w)["message"]
+
+
+def _png(path, color):
+    from PIL import Image
+
+    # A gradient, not a flat colour: flat images are treated as Google stub placeholders.
+    img = Image.new("RGB", (800, 450), color)
+    img.putdata([(color[0], (color[1] + x // 4) % 256, (color[2] + y // 4) % 256) for y in range(450) for x in range(800)])
+    img.save(path)
+    return str(path)
+
+
+def test_unrepeated_full_slide_picture_is_reported_repeated_background_is_not(tmp_path) -> None:
+    from scripts.build_cmp_academy import dropped_unrepeated_pictures, picture_hash_counts
+
+    prs = Presentation()
+    prs.slide_width, prs.slide_height = Inches(13.333), Inches(7.5)
+    design_bg = _png(tmp_path / "bg.png", (240, 244, 250))
+    screenshot = _png(tmp_path / "shot.png", (10, 120, 200))
+    for i in range(4):
+        slide = prs.slides.add_slide(prs.slide_layouts[6])
+        slide.shapes.add_picture(design_bg, 0, 0, prs.slide_width, prs.slide_height)  # on every slide
+        slide.shapes.add_textbox(Inches(1), Inches(0.5), Inches(8), Inches(1)).text_frame.text = f"제목 {i}"
+    # slide 3 also carries a unique, slide-sized picture
+    prs.slides[3].shapes.add_picture(screenshot, 0, 0, prs.slide_width, prs.slide_height)
+
+    counts = picture_hash_counts(prs)
+    sw, sh = int(prs.slide_width), int(prs.slide_height)
+
+    assert dropped_unrepeated_pictures(prs.slides[0], sw, sh, counts) == []  # repeated design bg
+    flagged = dropped_unrepeated_pictures(prs.slides[3], sw, sh, counts)
+    assert len(flagged) == 1
+    assert flagged[0]["width_pct"] == 100 and flagged[0]["height_pct"] == 100
+
+
+def test_small_content_picture_is_not_reported(tmp_path) -> None:
+    from scripts.build_cmp_academy import dropped_unrepeated_pictures, picture_hash_counts
+
+    prs = Presentation()
+    prs.slide_width, prs.slide_height = Inches(13.333), Inches(7.5)
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    slide.shapes.add_textbox(Inches(1), Inches(0.5), Inches(8), Inches(1)).text_frame.text = "제목"
+    slide.shapes.add_picture(_png(tmp_path / "chart.png", (200, 50, 50)), Inches(1), Inches(2), Inches(5), Inches(3))
+    counts = picture_hash_counts(prs)
+    assert dropped_unrepeated_pictures(prs.slides[0], int(prs.slide_width), int(prs.slide_height), counts) == []
+
+
+def test_picture_dropped_message_shows_slide_number() -> None:
+    shown = format_warning({"code": "PICTURE_DROPPED", "src_index": 12})
+    assert shown["level"] == "warn" and "13" in shown["message"]
