@@ -446,10 +446,12 @@ def copy_chart_part(shape, dst_slide):
 
 
 def _normalize_axis_ids(chart_el) -> None:
-    """Rewrite negative c:axId/c:crossAx values as unsigned (schema: xs:unsignedInt).
+    """Rewrite negative c:axId/c:crossAx values as positive int32 (schema: xs:unsignedInt).
 
-    python-pptx-generated charts carry ids like -2068027336; PowerPoint accepts them but
-    the OOXML validator does not. The same mod-2**32 mapping keeps axId/crossAx pairs aligned.
+    python-pptx-generated charts carry ids like -2068027336; PowerPoint accepts them but the
+    OOXML validator does not. Use the absolute value, NOT ``val + 2**32``: PowerPoint reads
+    these as int32, and ids above 2**31-1 make it show the "repair presentation" dialog.
+    The same mapping on every tag keeps axId/crossAx pairs aligned.
     """
     for tag in ("axId", "crossAx"):
         for el in chart_el.iter(f"{{{_C_NS}}}{tag}"):
@@ -458,7 +460,7 @@ def _normalize_axis_ids(chart_el) -> None:
             except ValueError:
                 continue
             if val < 0:
-                el.set("val", str(val + 2**32))
+                el.set("val", str(-val))
 
 
 def clone_chart_frame(shape, slide, off_l: int = 0, off_t: int = 0) -> bool:
