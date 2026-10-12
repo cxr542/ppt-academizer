@@ -15,6 +15,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY api api
 COPY core core
 COPY engine engine
+COPY config config
 COPY scripts scripts
 COPY docker/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh

@@ -2,6 +2,13 @@
 
 형식: [Keep a Changelog](https://keepachangelog.com/). 상세는 [releases/](releases/) 참고.
 
+## [1.6.6] - 2026-10-12
+
+Fix: migrate 시 **차트가 깨지던 문제** — 차트 파트·임베디드 워크북을 함께 복사(이전에는 `r:id`가 끊겨 무관한 이미지 파트로 연결될 수 있었음).  
+Fix: `profile=spec` 명시 선택 시 lab 덱 레이아웃이 적용되지 않던 문제, 폰트 크기 상속 덱의 표지·단일 텍스트 박스 목차 감지.  
+Fix: Google PNG 슬라이드를 늘리지 않고 종횡비 유지·중앙 배치.  
+Config: 덱 종류(파일명 패턴·skip 슬라이드·파트 표지·부제)를 `config/deck_kinds.json` / `PPT_ACADEMIZER_DECK_KINDS`로 추가·덮어쓰기 (`config/deck_kinds.example.json`). 암묵적 CMP 기본값 제거.
+
 ## [1.6.5] - 2026-05-21
 
 Stability: 청크 업로드(413), API 임시 폴더 자동 삭제, 무거운 작업 `to_thread`, 서버 기본 `SKIP_PP_REPAIR`·`127.0.0.1`.  

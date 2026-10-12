@@ -892,6 +892,26 @@ def _apply_kubernetes_sample_five_slides(prs: Presentation) -> None:
         delete_slide(prs, len(prs.slides) - 1)
 
 
+def _fit_picture_box(path: Path, *, box: tuple[int, int, int, int]) -> tuple[int, int, int, int]:
+    """Largest rect inside *box* with the image's aspect ratio, centered (no stretching).
+
+    Falls back to the full box when the image size cannot be read.
+    """
+    left, top, bw, bh = box
+    try:
+        from PIL import Image
+
+        with Image.open(path) as im:
+            iw, ih = im.size
+    except Exception:
+        return box
+    if iw <= 0 or ih <= 0:
+        return box
+    scale = min(bw / iw, bh / ih)
+    w, h = int(iw * scale), int(ih * scale)
+    return left + (bw - w) // 2, top + (bh - h) // 2, w, h
+
+
 def apply_background_images(prs: Presentation, specs: Iterable[dict]) -> int:
     """Place exported slide PNGs on ``1_내지_거버닝 X`` slides (Google export fallback)."""
     applied = 0
@@ -905,13 +925,11 @@ def apply_background_images(prs: Presentation, specs: Iterable[dict]) -> int:
         sw, sh = int(prs.slide_width), int(prs.slide_height)
         margin_x = int(Inches(0.5))
         top = int(Inches(1.35))
-        pic = slide.shapes.add_picture(
-            str(path),
-            margin_x,
-            top,
-            width=sw - 2 * margin_x,
-            height=sh - top - int(Inches(0.5)),
+        left, top, width, height = _fit_picture_box(
+            path,
+            box=(margin_x, top, sw - 2 * margin_x, sh - top - int(Inches(0.5))),
         )
+        pic = slide.shapes.add_picture(str(path), left, top, width=width, height=height)
         pic.name = f"ingest_bg_{applied}"
         applied += 1
     return applied

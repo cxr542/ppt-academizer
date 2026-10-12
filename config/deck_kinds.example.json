@@ -1,0 +1,14 @@
+{
+  "_comment": "Copy to config/deck_kinds.json (or set PPT_ACADEMIZER_DECK_KINDS=/path/file.json). Kinds listed here are matched BEFORE the built-ins; a kind with a built-in name overrides only the fields you give.",
+  "global_skip_shape_names": [],
+  "kinds": {
+    "my_partner_course": {
+      "filename_patterns": ["my-partner", "파트너사\\s*과정"],
+      "skip_src_indices": [],
+      "auto_toc_after_cover": false,
+      "toc_slide_range": null,
+      "cover_subtitle": null,
+      "part_cover_indices": [0]
+    }
+  }
+}

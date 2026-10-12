@@ -1,13 +1,29 @@
 #!/usr/bin/env python3
-"""Per-deck migrate settings (§7) — replaces CMP-only hardcoding in build_cmp_academy."""
+"""Per-deck migrate settings (§7).
+
+Built-in kinds below are defaults. Partner-specific values (skip slides, part covers, cover
+subtitle, filename patterns) can be added or overridden without code changes through a JSON file:
+
+  1. ``$PPT_ACADEMIZER_DECK_KINDS`` (explicit path), else
+  2. ``<app root>/config/deck_kinds.json`` (outside ``engine/``, so engine syncs keep it).
+
+See ``config/deck_kinds.example.json``. A malformed file is ignored (built-ins are used).
+"""
 
 from __future__ import annotations
 
+import json
+import os
 import re
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
+from typing import Any
 
-DeckKind = str  # cmp | contrabass | paas | generic_partner
+DeckKind = str  # built-ins: cmp | contrabass | paas | generic_partner; JSON may add more
+
+GENERIC_KIND = "generic_partner"
+_AI_PATTERN = r"chatgpt|openai|gemini|copilot|claude|gamma\.?app|ai[-_ ]?(deck|ppt|export)"
 
 
 @dataclass(frozen=True)
@@ -20,59 +36,123 @@ class DeckMigrateConfig:
     part_cover_indices: frozenset[int]
 
 
+# Detection order matters: AI exports first (their filenames may also contain other words).
+_BUILTIN_KINDS: dict[str, dict[str, Any]] = {
+    GENERIC_KIND: {
+        "filename_patterns": [_AI_PATTERN],
+        "skip_src_indices": [],
+        "auto_toc_after_cover": False,
+        "toc_slide_range": None,
+        "cover_subtitle": None,
+        "part_cover_indices": [0],
+    },
+    "contrabass": {
+        "filename_patterns": [r"contrabass|콘트라베이스"],
+        "skip_src_indices": [],
+        "auto_toc_after_cover": False,
+        "toc_slide_range": None,
+        "cover_subtitle": None,
+        "part_cover_indices": [0],
+    },
+    "cmp": {
+        "filename_patterns": [r"\bcmp\b|클라우드\s*구현"],
+        "skip_src_indices": [8],
+        "auto_toc_after_cover": True,
+        "toc_slide_range": [2, 8],
+        "cover_subtitle": "클라우드 구현기술 (CMP)",
+        "part_cover_indices": [0, 13],
+    },
+    "paas": {
+        "filename_patterns": [r"\bpaas\b"],
+        "skip_src_indices": [],
+        "auto_toc_after_cover": False,
+        "toc_slide_range": None,
+        "cover_subtitle": None,
+        "part_cover_indices": [0],
+    },
+}
+
+# Shape names (Google exports) that are never body content. Extend via JSON.
+_BUILTIN_SKIP_SHAPE_NAMES = frozenset({"Google Shape;520;p15"})
+
+_APP_ROOT = Path(__file__).resolve().parents[2]
+
+
+def _config_path() -> Path | None:
+    env = os.environ.get("PPT_ACADEMIZER_DECK_KINDS", "").strip()
+    if env:
+        return Path(env).expanduser()
+    default = _APP_ROOT / "config" / "deck_kinds.json"
+    return default if default.is_file() else None
+
+
+@lru_cache(maxsize=8)
+def _load_overrides(path: str | None, mtime: float | None) -> dict[str, Any]:
+    if not path:
+        return {}
+    try:
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _overrides() -> dict[str, Any]:
+    path = _config_path()
+    if path is None or not path.is_file():
+        return {}
+    return _load_overrides(str(path), path.stat().st_mtime)
+
+
+def _kind_table() -> dict[str, dict[str, Any]]:
+    """User kinds first (so they win filename matching), then built-ins with overrides applied."""
+    user = _overrides().get("kinds")
+    user = user if isinstance(user, dict) else {}
+    table: dict[str, dict[str, Any]] = {}
+    for name, spec in user.items():
+        if name not in _BUILTIN_KINDS and isinstance(spec, dict):
+            table[name] = {**_BUILTIN_KINDS[GENERIC_KIND], "filename_patterns": [], **spec}
+    for name, base in _BUILTIN_KINDS.items():
+        override = user.get(name)
+        table[name] = {**base, **override} if isinstance(override, dict) else dict(base)
+    return table
+
+
+def skip_shape_names() -> frozenset[str]:
+    extra = _overrides().get("global_skip_shape_names")
+    if isinstance(extra, list):
+        return _BUILTIN_SKIP_SHAPE_NAMES | frozenset(str(x) for x in extra)
+    return _BUILTIN_SKIP_SHAPE_NAMES
+
+
 def detect_deck_kind(filename: str) -> DeckKind:
     name = filename.lower()
-    if re.search(
-        r"chatgpt|openai|gemini|copilot|claude|gamma\.?app|ai[-_ ]?(deck|ppt|export)",
-        name,
-        re.I,
-    ):
-        return "generic_partner"
-    if re.search(r"contrabass|콘트라베이스", name, re.I):
-        return "contrabass"
-    if re.search(r"\bcmp\b|클라우드\s*구현", name, re.I):
-        return "cmp"
-    if re.search(r"\bpaas\b", name, re.I):
-        return "paas"
-    return "generic_partner"
+    for kind, spec in _kind_table().items():
+        for pattern in spec.get("filename_patterns") or []:
+            try:
+                if re.search(pattern, name, re.I):
+                    return kind
+            except re.error:
+                continue
+    return GENERIC_KIND
+
+
+def _to_config(kind: str, spec: dict[str, Any]) -> DeckMigrateConfig:
+    toc = spec.get("toc_slide_range")
+    return DeckMigrateConfig(
+        deck_kind=kind,
+        skip_src_indices=frozenset(int(i) for i in spec.get("skip_src_indices") or []),
+        auto_toc_after_cover=bool(spec.get("auto_toc_after_cover", False)),
+        toc_slide_range=range(int(toc[0]), int(toc[1])) if toc else None,
+        cover_subtitle=spec.get("cover_subtitle") or None,
+        # An empty set would silently lose the cover; slide 0 is always a cover.
+        part_cover_indices=frozenset(int(i) for i in spec.get("part_cover_indices") or []) | {0},
+    )
 
 
 def config_for_kind(kind: DeckKind) -> DeckMigrateConfig:
-    if kind == "cmp":
-        return DeckMigrateConfig(
-            deck_kind="cmp",
-            skip_src_indices=frozenset({8}),
-            auto_toc_after_cover=True,
-            toc_slide_range=range(2, 8),
-            cover_subtitle="클라우드 구현기술 (CMP)",
-            part_cover_indices=frozenset({0, 13}),
-        )
-    if kind == "contrabass":
-        return DeckMigrateConfig(
-            deck_kind="contrabass",
-            skip_src_indices=frozenset(),
-            auto_toc_after_cover=False,
-            toc_slide_range=None,
-            cover_subtitle=None,
-            part_cover_indices=frozenset({0}),
-        )
-    if kind == "paas":
-        return DeckMigrateConfig(
-            deck_kind="paas",
-            skip_src_indices=frozenset(),
-            auto_toc_after_cover=False,
-            toc_slide_range=None,
-            cover_subtitle=None,
-            part_cover_indices=frozenset({0}),
-        )
-    return DeckMigrateConfig(
-        deck_kind="generic_partner",
-        skip_src_indices=frozenset(),
-        auto_toc_after_cover=False,
-        toc_slide_range=None,
-        cover_subtitle=None,
-        part_cover_indices=frozenset({0}),
-    )
+    table = _kind_table()
+    return _to_config(kind if kind in table else GENERIC_KIND, table.get(kind, table[GENERIC_KIND]))
 
 
 def migrate_config_for_source(source: Path | str) -> DeckMigrateConfig:

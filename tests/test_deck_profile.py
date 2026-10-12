@@ -49,22 +49,21 @@ def test_partner_heavy_ignores_apple_history_filename(tmp_path: Path) -> None:
     assert meta.get("shapes_per_slide", 0) >= 4.0
 
 
-def test_sparse_deck_stays_spec_even_with_contrabass_filename(tmp_path: Path) -> None:
-    """Few shapes → spec even if filename says CONTRABASS."""
+def test_sparse_deck_routes_migrate_even_with_contrabass_filename(tmp_path: Path) -> None:
+    """Auto routing always lands on migrate_cmp (spec drops images/tables/charts)."""
     p = tmp_path / "CONTRABASS-light.pptx"
     _blank_deck(p, slides=5, boxes_per_slide=1)
     profile, meta = detect_deck_profile(p)
-    assert profile == "spec"
+    assert profile == "migrate_cmp"
     assert meta.get("reason") in (
-        "text_lecture_structure",
-        "extractable_text_blocks",
-        "default_spec_heuristic",
-        "ai_freeform_export",
+        "text_lecture_structure_but_forced_migrate",
+        "ai_freeform_export_but_forced_migrate",
+        "default_migrate_heuristic",
     )
 
 
-def test_ai_like_deck_routes_spec(tmp_path: Path) -> None:
-    """Blank layout + text boxes (ChatGPT-style) → spec, not migrate_cmp."""
+def test_ai_like_deck_routes_migrate(tmp_path: Path) -> None:
+    """Blank layout + text boxes (ChatGPT-style) → migrate_cmp (forced; keeps images)."""
     p = tmp_path / "chatgpt-course-draft.pptx"
     prs = Presentation()
     prs.slide_width = Inches(13.333)
@@ -76,8 +75,11 @@ def test_ai_like_deck_routes_spec(tmp_path: Path) -> None:
     prs.save(p)
     profile, meta = detect_deck_profile(p)
     st = analyze_deck_structure(Presentation(str(p)))
-    assert profile == "spec"
-    assert meta.get("reason") in ("ai_freeform_export", "text_lecture_structure")
+    assert profile == "migrate_cmp"
+    assert meta.get("reason") in (
+        "ai_freeform_export_but_forced_migrate",
+        "text_lecture_structure_but_forced_migrate",
+    )
     assert ai_filename_hint(p.name)
 
 
@@ -89,7 +91,7 @@ def test_detect_cmp_filename(tmp_path: Path) -> None:
     assert meta.get("reason") == "partner_shape_heavy"
 
 
-def test_lab_lecture_routes_spec_before_partner_heavy(tmp_path: Path) -> None:
+def test_lab_lecture_is_detected_before_partner_heavy(tmp_path: Path) -> None:
     p = tmp_path / "k8s-dashboard-lab.pptx"
     prs = Presentation()
     prs.slide_width = Inches(13.333)
@@ -119,8 +121,8 @@ def test_lab_lecture_routes_spec_before_partner_heavy(tmp_path: Path) -> None:
 
     assert is_partner_shape_heavy(st)
     assert is_lab_lecture_deck(st)
-    assert profile == "spec"
-    assert meta.get("reason") == "lab_lecture_structure"
+    assert profile == "migrate_cmp"
+    assert meta.get("reason") == "lab_lecture_structure_but_forced_migrate"
 
 
 @pytest.mark.skipif(
