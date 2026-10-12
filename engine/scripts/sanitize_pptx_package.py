@@ -34,6 +34,30 @@ OFFICE_EXT_TAGS = (
 )
 P_NS = "http://schemas.openxmlformats.org/presentationml/2006/main"
 A_NS = "http://schemas.openxmlformats.org/drawingml/2006/main"
+R_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+
+
+def _svg_only_blip_elements(root) -> set:
+    """Elements that make up an SVG-only picture: ``a:blip`` with no raster ``r:embed``.
+
+    The academy template stores its logos as ``<a:blip><a:extLst><a:ext><asvg:svgBlip
+    r:embed=…/></a:ext></a:extLst></a:blip>`` (no PNG fallback). Stripping that extension
+    leaves an empty ``<a:blip/>`` and PowerPoint shows "그림을 표시할 수 없습니다". The original
+    markup opens cleanly in PowerPoint for Mac, so it must be kept.
+    """
+    protected: set = set()
+    for blip in root.iter(f"{{{A_NS}}}blip"):
+        if blip.get(f"{{{R_NS}}}embed") or blip.get(f"{{{R_NS}}}link"):
+            continue
+        for el in blip.iter():
+            if el is blip or str(el.tag).split("}")[-1] != "svgBlip":
+                continue
+            protected.add(el)
+            anc = el.getparent()
+            while anc is not None and anc is not blip:
+                protected.add(anc)
+                anc = anc.getparent()
+    return protected
 
 
 def _normalize_slide_connectors(data: bytes) -> bytes:
@@ -82,7 +106,10 @@ def _strip_office_extensions_xml(data: bytes) -> bytes:
 
     root = safe_fromstring(data)
     remove: list = []
+    keep = _svg_only_blip_elements(root)
     for el in root.iter():
+        if el in keep:
+            continue
         tag = el.tag.split("}")[-1] if "}" in str(el.tag) else str(el.tag)
         if tag in OFFICE_EXT_TAGS:
             remove.append(el)
@@ -288,14 +315,49 @@ def _convert_svg_to_png(svg_path: Path, png_path: Path) -> bool:
         return False
 
 
+_SVG_BLIP_EMBED_RE = re.compile(r"svgBlip\b[^>]*\br:embed=\"([^\"]+)\"")
+_REL_ID_RE = re.compile(r'\bId="([^"]+)"')
+_REL_TARGET_RE = re.compile(r'\bTarget="([^"]+)"')
+
+
+def svg_media_in_use(root: Path) -> set[str]:
+    """File names of ``ppt/media/*.svg`` still referenced by a retained ``asvg:svgBlip``."""
+    used: set[str] = set()
+    for xml_path in root.rglob("*.xml"):
+        text = xml_path.read_text(encoding="utf-8", errors="ignore")
+        rids = _SVG_BLIP_EMBED_RE.findall(text)
+        if not rids:
+            continue
+        rels_path = xml_path.parent / "_rels" / f"{xml_path.name}.rels"
+        if not rels_path.is_file():
+            continue
+        targets: dict[str, str] = {}
+        for tag in _RELATIONSHIP_RE.findall(rels_path.read_text(encoding="utf-8", errors="ignore")):
+            rid, target = _REL_ID_RE.search(tag), _REL_TARGET_RE.search(tag)
+            if rid and target:
+                targets[rid.group(1)] = target.group(1)
+        for rid in rids:
+            name = targets.get(rid, "").rsplit("/", 1)[-1]
+            if name.lower().endswith(".svg"):
+                used.add(name)
+    return used
+
+
 def rasterize_svg_media(root: Path) -> int:
-    """Convert ppt/media/*.svg → .png and rewrite package references."""
+    """Convert ppt/media/*.svg → .png and rewrite package references.
+
+    SVGs that an SVG-only picture still points to are left as they are (see
+    ``_svg_only_blip_elements``): the qlmanage/cairosvg thumbnail would be an opaque square.
+    """
     media = root / "ppt" / "media"
     if not media.is_dir():
         return 0
 
+    in_use = svg_media_in_use(root)
     mapping: dict[str, str] = {}
     for svg_path in sorted(media.glob("*.svg")):
+        if svg_path.name in in_use:
+            continue
         png_name = svg_path.stem + ".png"
         png_path = media / png_name
         if not _convert_svg_to_png(svg_path, png_path):
