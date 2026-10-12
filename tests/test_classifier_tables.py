@@ -76,3 +76,20 @@ def test_title_with_card_text_is_content_not_cover() -> None:
     ]
     slide = _slide_with_blocks(prs, "콘트라베이스의 강점", cards)
     assert analyze_slide_layout(slide)["layout"] == "content"
+
+
+def test_body_heavy_flag_for_first_slide_decisions() -> None:
+    prs = Presentation()
+    plain = _titled_slide(prs, "클라우드 구현기술")
+    assert analyze_slide_layout(plain)["body_heavy"] is False
+
+    with_table = _titled_slide(prs)
+    with_table.shapes.add_table(2, 2, Inches(1), Inches(2), Inches(6), Inches(2))
+    assert analyze_slide_layout(with_table)["body_heavy"] is True
+
+    # A table-only slide has no text blocks at all, yet is body content.
+    only_table = prs.slides.add_slide(prs.slide_layouts[6])
+    only_table.shapes.add_table(2, 2, Inches(1), Inches(2), Inches(6), Inches(2))
+    from scripts.llm_classifier import analyze_slide_with_llm
+
+    assert analyze_slide_with_llm(only_table)["body_heavy"] is True

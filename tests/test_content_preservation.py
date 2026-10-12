@@ -58,3 +58,35 @@ def test_content_loss_warning_thresholds() -> None:
 def test_slide_skipped_warning_is_displayed() -> None:
     shown = format_warning({"code": "SLIDE_SKIPPED", "src_index": 8})
     assert shown["level"] == "warn" and "9" in shown["message"]
+
+
+def test_slide_zero_with_table_is_planned_as_content_not_cover() -> None:
+    from scripts.build_cmp_academy import build_slide_plan
+
+    prs = Presentation()
+    first = prs.slides.add_slide(prs.slide_layouts[6])
+    box = first.shapes.add_textbox(Inches(1), Inches(0.5), Inches(8), Inches(1))
+    box.text_frame.text = "가상화 방식 비교"
+    first.shapes.add_table(3, 3, Inches(1), Inches(2), Inches(8), Inches(2))
+    second = prs.slides.add_slide(prs.slide_layouts[6])
+    second.shapes.add_textbox(Inches(1), Inches(0.5), Inches(8), Inches(1)).text_frame.text = "본문"
+    plan = build_slide_plan(prs)
+    assert plan[0] == (0, "content")
+
+
+def test_title_only_slide_zero_is_still_the_cover() -> None:
+    from scripts.build_cmp_academy import build_slide_plan
+
+    prs = Presentation()
+    first = prs.slides.add_slide(prs.slide_layouts[6])
+    first.shapes.add_textbox(Inches(1), Inches(2), Inches(8), Inches(1)).text_frame.text = "Kubernetes 입문"
+    assert build_slide_plan(prs)[0] == (0, "cover")
+
+
+def test_table_loss_warns_even_for_tiny_tables() -> None:
+    from scripts.build_cmp_academy import table_loss_warning
+
+    assert table_loss_warning(0, 1, 1) is None
+    w = table_loss_warning(0, 1, 0)
+    assert w and w["code"] == "CONTENT_LOSS"
+    assert "1" in format_warning(w)["message"]
