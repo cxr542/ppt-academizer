@@ -35,21 +35,14 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 레거시: UI만 Netlify, 변환 API는 Python 호스트(Render 등).  
 → [docs/DEPLOY-NETLIFY.md](docs/DEPLOY-NETLIFY.md) (팀: [cxr542 Netlify](https://app.netlify.com/teams/cxr542/projects))
 
-## 엔진 (ppt-test 독립)
+## 엔진
 
-변환 로직은 **`engine/`** 에 번들되어 있습니다. monorepo의 `ppt-test` 없이도 동작합니다.
+변환 로직은 **`engine/`** 에 있으며 이 저장소에서 직접 관리합니다(차트 복사, 분류기, SVG 그래픽 등).
+예전 `ppt-test` 프로젝트는 오래된 사본이라 **2026-10-12에 폐기(보관)**했고, 동기화 스크립트와
+`ppt-test` 폴백도 제거했습니다. 엔진을 찾지 못하면 오래된 사본으로 조용히 변환하는 대신 오류를 냅니다.
 
-> **주의:** `engine/`은 v1.6.6부터 **이 저장소에서 직접 수정**합니다(차트 복사, 분류기, SVG 그래픽 등).
-> ppt-test 사본이 더 오래되어, 동기화하면 이 수정들이 사라집니다. 그래서
-> `scripts/sync_engine_from_ppt_test.py`는 `engine/`이 있으면 `--force` 없이는 아무것도 하지 않고,
-> `--force`여도 기존 `engine/`을 `engine.bak-<시각>/`로 옮겨 둡니다(삭제하지 않음).
-
-```bash
-# engine/이 없는 새 체크아웃에서만 그대로 실행됩니다. 이미 있으면 --force 필요(백업 후 교체).
-python scripts/sync_engine_from_ppt_test.py
-```
-
-환경 변수: `PPT_ENGINE_ROOT` 또는 `PPT_TEST_ROOT`로 다른 엔진 경로 지정 가능.
+환경 변수 `PPT_ENGINE_ROOT`(또는 `PPT_TEST_ROOT`)로 다른 엔진 경로를 명시할 수 있습니다.
+`engine/`이 없다면 `git checkout -- engine`으로 복구하세요.
 
 ## 스모크·테스트
 

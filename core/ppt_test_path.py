@@ -1,32 +1,44 @@
-"""Resolve PPT build engine root (bundled engine/ or monorepo ppt-test)."""
+"""Resolve the PPT build engine root (the bundled ``engine/`` directory).
+
+The module keeps its old name because many callers import it; the former ``ppt-test`` project
+is retired and is no longer used as a fallback (its copy was outdated and silently produced
+conversions without the fixes made in ``engine/``).
+"""
 
 from __future__ import annotations
 
 import os
 from pathlib import Path
 
+_ENGINE_MARKER = Path("scripts") / "academy_deck_build_lib.py"
 
-def resolve_ppt_test_root() -> Path:
+
+def resolve_ppt_test_root(app_root: Path | None = None) -> Path:
     """Engine root for `from scripts.*` imports.
 
     Priority:
     1. ``PPT_ENGINE_ROOT`` or ``PPT_TEST_ROOT`` (explicit override)
-    2. ``apps/ppt-academizer/engine`` (bundled copy — standalone)
-    3. ``cursorstudy/experiments/ppt-test`` (monorepo sibling)
+    2. ``<app root>/engine`` (the bundled engine, maintained in this repo)
+
+    Raises ``FileNotFoundError`` when neither exists, instead of falling back to a stale copy.
     """
     for key in ("PPT_ENGINE_ROOT", "PPT_TEST_ROOT"):
         env = os.environ.get(key, "").strip()
         if env:
             return Path(env).expanduser().resolve()
 
-    academizer = Path(__file__).resolve().parent.parent
-    bundled = academizer / "engine"
-    if (bundled / "scripts" / "academy_deck_build_lib.py").is_file():
+    root = app_root if app_root is not None else Path(__file__).resolve().parent.parent
+    bundled = root / "engine"
+    if (bundled / _ENGINE_MARKER).is_file():
         return bundled.resolve()
 
-    return (
-        academizer.parent.parent / "cursorstudy" / "experiments" / "ppt-test"
-    ).resolve()
+    raise FileNotFoundError(
+        f"Bundled engine not found at {bundled}. Restore it from git "
+        "(git checkout -- engine) or point PPT_ENGINE_ROOT at an engine directory."
+    )
+
+
+resolve_engine_root = resolve_ppt_test_root
 
 
 def ensure_engine_on_path() -> Path:

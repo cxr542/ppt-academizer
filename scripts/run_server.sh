@@ -16,12 +16,12 @@ _resolve_engine() {
     echo "$ROOT/engine"
     return
   fi
-  echo "$ROOT/../../cursorstudy/experiments/ppt-test"
+  echo "$ROOT/engine"
 }
 
 ENGINE="$(_resolve_engine)"
 if [ ! -f "$ENGINE/scripts/academy_deck_build_lib.py" ]; then
-  echo "Engine missing. Run: cd $ROOT && python scripts/sync_engine_from_ppt_test.py" >&2
+  echo "Engine missing at $ENGINE. Restore it: cd $ROOT && git checkout -- engine (or set PPT_ENGINE_ROOT)" >&2
   exit 1
 fi
 

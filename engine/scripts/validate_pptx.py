@@ -19,8 +19,7 @@ def _resolve_office_dir() -> Path:
     if (legacy / "validate.py").is_file():
         return legacy
     raise FileNotFoundError(
-        "office/validate.py not found. Restore engine/office from git (the sync script needs --force "
-        "and replaces engine/ with an older copy)."
+        "office/validate.py not found. Restore engine/office from git: git checkout -- engine/office"
     )
 
 

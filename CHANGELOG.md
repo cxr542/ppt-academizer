@@ -2,6 +2,10 @@
 
 형식: [Keep a Changelog](https://keepachangelog.com/). 상세는 [releases/](releases/) 참고.
 
+## [Unreleased]
+
+Chore: **`ppt-test` 폐기** — `ppt-test`는 오래된 사본(최종 수정 2026-05-20, git 이력 없음)이라 `engine/`이 정본이 되었고, 동기화 스크립트(`sync_engine_from_ppt_test.py`)와 그 가드, `core/ppt_test_path.py`의 ppt-test 폴백(엔진이 없을 때 오래된 사본으로 조용히 변환)을 제거했습니다. 이제 엔진이 없으면 `FileNotFoundError`입니다. ppt-test에만 있던 테스트 7개 파일을 `tests/`로 이식했습니다(옛 라우팅 기대값 1건은 현재 동작에 맞춤). 문서(README, docs/standalone.md, engine/README.md)를 정정했습니다.  
+
 ## [1.6.13] - 2026-10-12
 
 Fix: **SmartArt·임베디드 OLE 개체가 있는 슬라이드** — (1) 분류기가 표·차트 외의 그래픽 프레임을 못 봐서 표지로 오분류하여 슬라이드째 사라졌고, (2) 그래픽 프레임을 XML만 복제해 `r:dm/lo/qs/cs`·`r:id`·`r:embed`가 원본 슬라이드의 관계를 가리키는 **끊긴 참조**가 되었습니다(OLE 미리보기는 검증 실패로 변환 전체가 오류, SmartArt는 검증을 통과한 채 PowerPoint 복구 팝업 위험). 이제 SmartArt 데이터·레이아웃·스타일·색·그리기 파트와 OLE 패키지·미리보기를 함께 복사하고 참조를 새 슬라이드 기준으로 다시 연결합니다.  
@@ -12,10 +16,6 @@ Fix: 헤더 영역에서 시작하는 SmartArt·OLE도 더 이상 일괄 제외�
 
 Fix: **헤더 영역(상단 약 1.26in)에서 시작하는 차트가 무조건 제외되던 문제** — 차트는 이제 본문으로 이식합니다. SmartArt/OLE 등 다른 그래픽 프레임은 아직 복사할 수 없어 그대로입니다.  
 Add: 경고 `HEADER_TEXT_DROPPED`(info) — 제목·부제와 겹치지 않도록 상단 영역의 텍스트(카테고리 태그·날짜 등)를 제외할 때 그 텍스트를 알려 줍니다. 제외 동작 자체는 바꾸지 않았습니다. 실덱 7개 중 5개는 해당 없음, AI 생성 덱 1개에서 "TECHNICAL" 태그가 보고됐습니다.  
-
-## [Unreleased]
-
-Chore: `scripts/sync_engine_from_ppt_test.py`가 `engine/`을 확인 없이 삭제하고 오래된 ppt-test 사본으로 덮어써 v1.6.6 이후의 수정이 사라지던 위험을 막았습니다. `engine/`이 있으면 `--force` 없이는 아무것도 하지 않고, `--force`여도 `engine.bak-<시각>/`로 옮겨 둡니다. 문서(README, docs/standalone.md, engine/README.md)는 "`engine/`은 이 저장소에서 직접 수정"으로 정정했습니다.  
 
 ## [1.6.11] - 2026-10-12
 

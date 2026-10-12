@@ -15,7 +15,7 @@
 
 1. 개발 전: `vX.Y.Z-PLAN.md` 작성·갱신 (필요 시)  
 2. 구현·`pytest` + `run_smoke_tests.py` 통과  
-3. `SERVICE_VERSION` bump · `scripts/sync_engine_from_ppt_test.py` (엔진 변경 시)  
+3. `SERVICE_VERSION` bump (`core/version.py`) · `CHANGELOG.md` 갱신 — 엔진은 `engine/`을 직접 수정하고 `pytest tests/`로 검증(ppt-test 동기화는 폐기됨)  
 4. `vX.Y.Z-RELEASE.md` 작성 → [CHANGELOG.md](../CHANGELOG.md)  
 5. Git: `git tag -a ppt-academizer-vX.Y.Z -m "…"`
 
