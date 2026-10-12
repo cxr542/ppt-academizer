@@ -77,3 +77,5 @@ def test_copied_chart_axis_ids_are_unsigned(tmp_path: Path) -> None:
 
     ids = re.findall(r'<c:(?:axId|crossAx) val="([^"]+)"', chart_xml)
     assert ids and all(i.isdigit() for i in ids)
+    # PowerPoint treats ids as int32; anything above 2**31-1 triggers its repair dialog.
+    assert all(int(i) <= 2**31 - 1 for i in ids)
