@@ -56,3 +56,18 @@ def test_build_wizard_preview_structure():
     assert out["cards"][0]["advanced"] is False
     assert out["cards"][1]["advanced"] is True
     assert len(out["structure_bullets"]) >= 2
+
+
+def test_migrate_preview_summary_has_no_internal_jargon(tmp_path) -> None:
+    from pptx import Presentation
+
+    from core.wizard_preview import _preview_migrate
+
+    prs = Presentation()
+    prs.slides.add_slide(prs.slide_layouts[0]).shapes.title.text = "제목"
+    path = tmp_path / "deck.pptx"
+    prs.save(path)
+
+    summary = " ".join(_preview_migrate(path)["summary"])
+    assert "§" not in summary and "deck_kind" not in summary and "이식" not in summary
+    assert "원본 1장 기준" in summary
