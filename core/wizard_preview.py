@@ -24,18 +24,21 @@ from scripts.deck_profile import analyze_deck_structure, detect_deck_profile  # 
 PROFILE_CARDS: list[dict[str, str]] = [
     {
         "id": "migrate_cmp",
-        "title": "도형 이식 (§7)",
-        "subtitle": "migrate_cmp",
-        "description": "파트너·CONTRABASS·CMP형 — 원본 도형·표·차트·그림을 유지하며 아카데미 레이아웃에 맞춥니다.",
+        "title": "아카데미 PPT로 변환",
+        "subtitle": "원본 그대로 · 아카데미 스타일",
+        "description": (
+            "표·차트·그림은 그대로 두고, 아카데미 레이아웃과 스타일을 입힙니다. "
+            "대부분의 덱에 권장합니다."
+        ),
     },
     {
         "id": "spec",
-        "title": "텍스트·placeholder (§5)",
-        "subtitle": "spec",
+        "title": "텍스트로 새로 구성",
+        "subtitle": "텍스트만 가져와 재구성",
         "description": (
-            "Google 슬라이드 이미지 export·텍스트 위주 덱용 — 텍스트를 읽어 표지·목차·본문 "
-            "placeholder에 새로 채웁니다. 원본 도형·표·차트는 옮기지 않으므로 일반 덱에는 "
-            "도형 이식을 권장합니다."
+            "Google 슬라이드 이미지 export·텍스트 위주 덱용 — 텍스트를 읽어 표지·목차·본문에 "
+            "새로 채웁니다. 원본 도형·표·차트는 옮기지 않으므로 일반 덱에는 "
+            "「아카데미 PPT로 변환」을 권장합니다."
         ),
     },
 ]
