@@ -52,4 +52,7 @@ def test_build_wizard_preview_structure():
     assert out["cards"][0]["recommended"] is True
     assert out["cards"][0]["preview"] == migrate_preview
     assert out["cards"][1]["preview"] == spec_preview
+    # spec is a secondary choice unless the deck is a Google image export
+    assert out["cards"][0]["advanced"] is False
+    assert out["cards"][1]["advanced"] is True
     assert len(out["structure_bullets"]) >= 2

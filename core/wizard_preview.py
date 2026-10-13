@@ -32,7 +32,11 @@ PROFILE_CARDS: list[dict[str, str]] = [
         "id": "spec",
         "title": "텍스트·placeholder (§5)",
         "subtitle": "spec",
-        "description": "강의안·Google export형 — 텍스트를 읽어 표지·목차·본문 placeholder에 채웁니다.",
+        "description": (
+            "Google 슬라이드 이미지 export·텍스트 위주 덱용 — 텍스트를 읽어 표지·목차·본문 "
+            "placeholder에 새로 채웁니다. 원본 도형·표·차트는 옮기지 않으므로 일반 덱에는 "
+            "도형 이식을 권장합니다."
+        ),
     },
 ]
 
@@ -184,7 +188,13 @@ def build_wizard_preview(
     cards: list[dict[str, Any]] = []
     for meta in PROFILE_CARDS:
         pid = meta["id"]
-        card = {**meta, "recommended": pid == recommended}
+        # spec rebuilds slides from text (no shapes/tables/charts), so it is only a primary
+        # choice for Google image exports; otherwise the UI tucks it under "advanced".
+        card = {
+            **meta,
+            "recommended": pid == recommended,
+            "advanced": pid == "spec" and recommended != "spec",
+        }
         if pid == "migrate_cmp":
             card["preview"] = migrate_preview
         else:

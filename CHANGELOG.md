@@ -2,6 +2,10 @@
 
 형식: [Keep a Changelog](https://keepachangelog.com/). 상세는 [releases/](releases/) 참고.
 
+## [1.7.5] - 2026-10-13
+
+Change: 변환 방식 카드에 `advanced` 플래그를 추가했습니다. `spec`(텍스트·placeholder) 방식은 원본 도형·표·차트를 옮기지 않고 텍스트로 슬라이드를 새로 만들기 때문에 Google 이미지 export가 아닌 덱에서는 `advanced: true`로 내려가며, 설명 문구도 이 점을 밝힙니다. 서버 동작·자동 라우팅은 바뀌지 않았고(`profile=spec` 직접 지정은 그대로 동작), TMS 화면이 이 플래그로 `spec`을 "고급" 영역에 접어 둡니다. 플래그가 없는 구버전 클라이언트는 이전처럼 두 카드를 모두 보여 줍니다.  
+
 ## [1.7.4] - 2026-10-13
 
 Fix: 변환 결과 화면의 참고 항목에 **서버 내부 로그가 영어·서버 경로 그대로** 노출되던 문제(예: `Using academy brand pack at /tmp/brand`). `BRAND_PACK`·`BRAND_PACK_MISSING`·`BRAND_ICONS_REPLACED`·`CANVAS_RESCALED`·`LAYOUT_PATTERN`·`SOURCE_PLACEHOLDER_IMAGE` 경고를 한국어 문구로 바꿨습니다. 아이콘 교체 경고는 개수만 보여 줍니다.  
