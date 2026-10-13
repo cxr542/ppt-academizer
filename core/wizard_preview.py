@@ -151,14 +151,13 @@ def _preview_migrate(source: Path) -> dict[str, Any]:
         )
         shown += 1
 
-    summary = [
-        f"출력 예상 약 {plan_len}장 (원본 {len(prs.slides)}장 기준 §7 플랜)",
-        f"deck_kind: {cfg.deck_kind}"
-        + (" · CMP 자동 목차" if cfg.auto_toc_after_cover else ""),
-        "도형·표·차트는 원본 위치를 유지하며 이식합니다",
-    ]
+    summary = [f"출력 예상 약 {plan_len}장 (원본 {len(prs.slides)}장 기준)"]
+    if cfg.auto_toc_after_cover:
+        summary.append("CMP 강의안으로 인식해 표지 뒤에 목차를 자동으로 넣습니다")
+    summary.append("표·차트·그림은 원본 위치를 유지합니다")
     if cfg.skip_src_indices:
-        summary.append(f"설정상 제외 슬라이드: {sorted(cfg.skip_src_indices)}")
+        skipped = ", ".join(str(i + 1) for i in sorted(cfg.skip_src_indices))
+        summary.append(f"덱 설정에 따라 제외되는 슬라이드: 원본 {skipped}장")
     return {
         "output_slide_count": plan_len,
         "summary": summary,
