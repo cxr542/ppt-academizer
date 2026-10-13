@@ -55,7 +55,7 @@ def format_warning(w: dict) -> dict:
     prefix = f"원본 {slide_n}장: " if slide_n is not None else ""
 
     templates: dict[str, str | tuple[str, str]] = {
-        "PIPELINE_MIGRATE_CMP": ("info", "도형 이식(§7) 방식으로 변환했습니다."),
+        "PIPELINE_MIGRATE_CMP": ("info", "원본 도형·표·차트를 유지하는 아카데미 PPT 변환으로 처리했습니다."),
         "ACADEMY_SOURCE_LAYOUT": (
             "info",
             "아카데미 마스터로 만든 원본입니다. 헤더·도형을 §7 규칙으로 다시 맞춥니다.",
