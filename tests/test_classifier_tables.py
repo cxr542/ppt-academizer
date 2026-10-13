@@ -142,3 +142,58 @@ def test_mid_slide_title_still_scores_as_cover() -> None:
     prs = Presentation()
     slide = _titled_slide(prs, "경청해 주셔서 감사합니다", top=COVER_TOP_IN)
     assert analyze_slide_layout(slide)["layout"] == "cover"
+
+
+def _divider(prs, title, kicker=None, subtitle=None, title_top=2.3, title_pt=54):
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    if kicker:
+        k = slide.shapes.add_textbox(Inches(1), Inches(title_top - 0.8), Inches(8), Inches(0.4))
+        k.text_frame.text = kicker
+        k.text_frame.paragraphs[0].runs[0].font.size = Pt(15)
+    box = slide.shapes.add_textbox(Inches(1), Inches(title_top), Inches(10), Inches(1.2))
+    box.text_frame.text = title
+    box.text_frame.paragraphs[0].runs[0].font.size = Pt(title_pt)
+    if subtitle:
+        sub = slide.shapes.add_textbox(Inches(1), Inches(title_top + 1.5), Inches(10), Inches(0.5))
+        sub.text_frame.text = subtitle
+        sub.text_frame.paragraphs[0].runs[0].font.size = Pt(20)
+    return slide
+
+
+def test_mid_slide_title_only_divider_is_a_section() -> None:
+    """Section detection was unreachable: the title band only came from the top 2in, but the
+    section rule needed the title at >= 2in, so no slide ever scored as a divider."""
+    prs = Presentation()
+    result = analyze_slide_layout(_divider(prs, "I. 시장 환경 및 배경"))
+    assert result["layout"] == "section"
+    assert result["title"] == "I. 시장 환경 및 배경"
+
+
+def test_divider_with_one_line_subtitle_is_a_section() -> None:
+    prs = Presentation()
+    slide = _divider(prs, "I. 시장 환경 및 배경", subtitle="글로벌 가상화 시장의 급격한 정책 변화")
+    assert analyze_slide_layout(slide)["layout"] == "section"
+
+
+def test_divider_with_kicker_uses_the_big_line_as_title() -> None:
+    prs = Presentation()
+    result = analyze_slide_layout(_divider(prs, "전략적 참여 배경", kicker="STRATEGIC ANALYSIS", title_top=4.0))
+    assert result["layout"] == "section"
+    assert result["title"] == "전략적 참여 배경"
+
+
+def test_divider_like_slide_with_real_body_text_is_content() -> None:
+    prs = Presentation()
+    body = "이 슬라이드는 간지처럼 보이지만 실제 본문 설명이 길게 이어지는 내용 슬라이드입니다. " * 2
+    assert analyze_slide_layout(_divider(prs, "I. 시장 환경", subtitle=body))["layout"] != "section"
+
+
+def test_small_mid_slide_text_is_not_a_divider() -> None:
+    prs = Presentation()
+    assert analyze_slide_layout(_divider(prs, "참고 자료", title_pt=18))["layout"] == "content"
+
+
+def test_header_title_slide_is_not_a_section() -> None:
+    prs = Presentation()
+    result = analyze_slide_layout(_divider(prs, "시장 환경", title_top=0.6))
+    assert result["layout"] != "section"

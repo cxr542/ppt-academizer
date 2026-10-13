@@ -157,6 +157,17 @@ def format_warning(w: dict) -> dict:
             else "아이콘을 아카데미 브랜드 아이콘으로 바꿨습니다.",
         }
 
+    if code == "SECTION_TEXT_DROPPED":
+        text = str(w.get("text") or "").strip()
+        return {
+            "code": code,
+            "level": "info",
+            "slide": slide_n,
+            "message": prefix
+            + f"간지(챕터 표지)에는 제목 외 글을 넣을 자리가 없어 \"{text}\"을(를) 제외했습니다. "
+            "필요하면 원본에서 옮겨 주세요.",
+        }
+
     if code == "HEADER_TEXT_DROPPED":
         text = str(w.get("text") or "").strip()
         return {
