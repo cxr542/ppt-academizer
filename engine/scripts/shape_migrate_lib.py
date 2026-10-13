@@ -1171,6 +1171,39 @@ def fit_body_shapes(slide, slide_width: int, slide_height: int) -> None:
                 shape.width = max(MIN_SHAPE_W, width - overflow)
 
 
+HEADER_PICTURE_GAP_EMU = 90_000
+
+
+def fit_header_overlapping_pictures(slide, slide_width: int, slide_height: int) -> int:
+    """Move/scale content pictures that start in the header band below it.
+
+    A tall picture kept at its source position (e.g. top 0.5in, 6.5in high) covers the academy
+    title row and logo. Scale it down (aspect ratio kept) to fit between the header and the
+    bottom margin, keeping the edge it was aligned to. Returns the number of pictures changed.
+    """
+    if slide.slide_layout.name not in CONTENT_LAYOUTS:
+        return 0
+    top_limit = HEADER_BOTTOM_EMU + HEADER_PICTURE_GAP_EMU
+    bottom_limit = int(slide_height) - SLIDE_MARGIN_BOTTOM
+    avail_h = bottom_limit - top_limit
+    changed = 0
+    for shape in slide.shapes:
+        if shape.is_placeholder or shape.shape_type != MSO_SHAPE_TYPE.PICTURE:
+            continue
+        top, height = int(shape.top or 0), int(shape.height or 0)
+        width, left = int(shape.width or 0), int(shape.left or 0)
+        if height <= 0 or width <= 0 or top >= HEADER_BOTTOM_EMU:
+            continue
+        scale = min(1.0, avail_h / height)
+        new_h, new_w = int(height * scale), int(width * scale)
+        center = left + width / 2
+        new_left = left + width - new_w if center > slide_width / 2 else left
+        shape.left, shape.top = new_left, top_limit
+        shape.width, shape.height = new_w, new_h
+        changed += 1
+    return changed
+
+
 def _fix_open_in_slide_view(path: Path) -> None:
     import re
     import zipfile
