@@ -1,4 +1,4 @@
 """ppt-academizer service version (see releases/)."""
 
-SERVICE_VERSION = "1.7.2"
+SERVICE_VERSION = "1.7.3"
 LATEST_RELEASE_DOC = "releases/v1.6.0-RELEASE.md"
