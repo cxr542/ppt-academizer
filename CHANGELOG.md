@@ -2,6 +2,10 @@
 
 형식: [Keep a Changelog](https://keepachangelog.com/). 상세는 [releases/](releases/) 참고.
 
+## [1.7.4] - 2026-10-13
+
+Fix: 변환 결과 화면의 참고 항목에 **서버 내부 로그가 영어·서버 경로 그대로** 노출되던 문제(예: `Using academy brand pack at /tmp/brand`). `BRAND_PACK`·`BRAND_PACK_MISSING`·`BRAND_ICONS_REPLACED`·`CANVAS_RESCALED`·`LAYOUT_PATTERN`·`SOURCE_PLACEHOLDER_IMAGE` 경고를 한국어 문구로 바꿨습니다. 아이콘 교체 경고는 개수만 보여 줍니다.  
+
 ## [1.7.3] - 2026-10-13
 
 Fix: **표지 판정의 글자 크기 임계값 단위 오류** — 표지는 "제목 32pt 이상"이어야 하는데 글자 크기(EMU, 32pt = 406,400)를 `3200`(1/100pt 단위)과 비교해, 글자 크기를 명시한 슬라이드는 **크기와 상관없이** 텍스트 블록이 4개 이하이면 표지 점수를 받았습니다. 그래서 짧은 설명이 달린 그림 중심 슬라이드, 카드 몇 개짜리 슬라이드가 표지로 처리되어 **그림과 본문이 사라졌습니다.** 임계값을 `Pt(32)`(EMU)로 맞췄습니다. 실덱: [기획안] 교육신청 덱은 11장 중 표지 7장 → 1장, 그림 20 → 32개, 텍스트 96% → 99%. 나머지 덱은 변화 없음.  

@@ -1,5 +1,7 @@
 """Warning formatting for UI."""
 
+import re
+
 from core.warnings_display import format_warning, format_warnings
 
 
@@ -67,3 +69,22 @@ def test_repair_import_error_hidden() -> None:
 def test_format_warnings_skips_meta() -> None:
     out = format_warnings([{"code": "MIGRATE_META", "deck_kind": "cmp"}])
     assert out == []
+
+
+_HANGUL = re.compile(r"[가-힣]")
+
+
+def test_engine_warning_codes_never_leak_english_internal_text() -> None:
+    # Codes the engine emits with English/internal messages (paths, counts) must be rewritten.
+    engine_msgs = {
+        "BRAND_PACK": "Using academy brand pack at /tmp/brand",
+        "BRAND_PACK_MISSING": "brand/ pack not found next to template; using built-in theme colors.",
+        "CANVAS_RESCALED": "Source slide size 1×2 differs from academy 3×4; body shapes were scaled to fit.",
+        "LAYOUT_PATTERN": "Applied academy 3col card pattern on content step 2.",
+        "SOURCE_PLACEHOLDER_IMAGE": "Source slide 3: 1 placeholder image(s) (e.g. 600×400 stub)",
+        "BRAND_ICONS_REPLACED": "Replaced 2 icon(s) with academy brand pack: a, b",
+    }
+    for code, msg in engine_msgs.items():
+        out = format_warning({"code": code, "message": msg, "count": 2})
+        assert _HANGUL.search(out["message"]), code
+        assert "/tmp" not in out["message"], code
