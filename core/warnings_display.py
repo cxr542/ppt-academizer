@@ -128,15 +128,23 @@ def format_warning(w: dict) -> dict:
             "원본과 아카데미 슬라이드 크기가 달라 본문 도형을 크기에 맞춰 조정했습니다.",
         ),
         "LAYOUT_PATTERN": ("info", "아카데미 카드 패턴을 적용했습니다."),
-        "SOURCE_PLACEHOLDER_IMAGE": (
-            "warn",
-            "원본에 크기만 잡힌 자리표시 이미지가 있습니다. Google 슬라이드에서 미디어를 "
-            "포함해 다시 내보내면 그림이 복원됩니다.",
-        ),
     }
 
     level = "info"
     body = _sanitize_technical_message(str(w.get("message") or ""), code)
+
+    if code == "SOURCE_PLACEHOLDER_IMAGE":
+        n = int(w.get("count") or 0)
+        what = f"자리표시 이미지 {n}개" if n else "자리표시 이미지"
+        return {
+            "code": code,
+            "level": "warn",
+            "slide": slide_n,
+            "message": prefix
+            + f"비어 있는 {what}(검정 박스·\"600×400\" 같은 임시 그림)를 제외했습니다. "
+            "원본에서 실제 이미지를 넣어야 하는 칸일 수 있으니 확인해 주세요. "
+            "Google 슬라이드 내보내기에서 이미지가 빠진 경우라면 미디어를 포함해 다시 내보내 보세요.",
+        }
 
     if code == "BRAND_ICONS_REPLACED":
         n = int(w.get("count") or 0)
