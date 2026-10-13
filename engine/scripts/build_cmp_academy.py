@@ -428,6 +428,8 @@ def is_raster_heavy_slide(src_slide, slide_width: int, slide_height: int) -> boo
     return is_image_primary_slide(src_slide, slide_width, slide_height)
 
 
+_STUB_BLACK_MAX_CHANNEL = 12
+
 _STOCK_PLACEHOLDER_DIMS = frozenset(
     {
         (400, 400),
@@ -441,24 +443,74 @@ _STOCK_PLACEHOLDER_DIMS = frozenset(
 )
 
 
-def is_stock_placeholder_picture(shape) -> bool:
-    """Detect Google-export stubs (solid black / classic 600×400 placeholders)."""
-    if shape.shape_type != MSO_SHAPE_TYPE.PICTURE:
-        return False
+def _open_picture(shape):
+    """PIL image of a picture shape, or None when it cannot be decoded."""
     try:
         from PIL import Image
         import io
 
+        return Image.open(io.BytesIO(shape.image.blob))
+    except Exception:
+        return None
+
+
+def _alpha_range(raw) -> tuple[int, int] | None:
+    """(min, max) alpha of an image with transparency, or None when it is fully opaque."""
+    if raw.mode in ("RGBA", "LA", "PA") or "transparency" in raw.info:
+        lo, hi = raw.convert("RGBA").getchannel("A").getextrema()
+        if lo < 255:
+            return lo, hi
+    return None
+
+
+# Google exports drop shadows as near-transparent black PNGs. They look like solid black once the
+# alpha channel is dropped, so they were reported as "empty placeholder images".
+_SHADOW_MAX_ALPHA = 96
+
+
+def is_decorative_shadow_picture(shape) -> bool:
+    """A faint, near-transparent dark picture (drop shadow); design decoration, not content."""
+    if shape.shape_type != MSO_SHAPE_TYPE.PICTURE:
+        return False
+    raw = _open_picture(shape)
+    if raw is None:
+        return False
+    alpha = _alpha_range(raw)
+    if alpha is None or alpha[1] > _SHADOW_MAX_ALPHA:
+        return False
+    rgba = raw.convert("RGBA")
+    px = [p for p in rgba.resize((48, 48)).getdata() if p[3] > 0]
+    # nothing visible at all (fully transparent) is decoration too
+    return all(max(p[:3]) <= 40 for p in px)
+
+
+def is_stock_placeholder_picture(shape) -> bool:
+    """Detect Google-export stubs (solid black / classic 600×400 placeholders)."""
+    if shape.shape_type != MSO_SHAPE_TYPE.PICTURE:
+        return False
+    raw = _open_picture(shape)
+    if raw is None:
+        return False
+    if is_decorative_shadow_picture(shape):
+        return False
+    try:
         blob = shape.image.blob
-        im = Image.open(io.BytesIO(blob)).convert("RGB")
+        im = raw.convert("RGB")
     except Exception:
         return False
     w, h = im.size
     if w <= 64 and h <= 64:
         return False
     sample = im.resize((48, 48))
-    colors = len(set(sample.getdata()))
-    if colors <= 4:
+    flat = set(sample.getdata())
+    colors = len(flat)
+    # Stubs are *opaque solid black*. Another flat colour (e.g. a navy section-divider panel) is a
+    # design element, and a transparent one is an overlay — neither is an empty image slot.
+    if (
+        colors <= 4
+        and _alpha_range(raw) is None
+        and all(max(c) <= _STUB_BLACK_MAX_CHANNEL for c in flat)
+    ):
         return True
     if (w, h) in _STOCK_PLACEHOLDER_DIMS and colors < 200 and len(blob) < 40_000:
         return True
@@ -480,7 +532,7 @@ def should_drop_body_picture(
     """
     if shape.shape_type != MSO_SHAPE_TYPE.PICTURE:
         return False
-    if is_stock_placeholder_picture(shape):
+    if is_stock_placeholder_picture(shape) or is_decorative_shadow_picture(shape):
         return True
     is_bg = is_slide_background_picture(shape, slide_width, slide_height)
     is_bleed = is_full_bleed_picture(shape, slide_width, slide_height)
@@ -1068,7 +1120,11 @@ def dropped_unrepeated_pictures(
     keep_full = is_picture_only_slide(src_slide)
     found: list[dict] = []
     for sh in src_slide.shapes:
-        if sh.shape_type != MSO_SHAPE_TYPE.PICTURE or is_stock_placeholder_picture(sh):
+        if (
+            sh.shape_type != MSO_SHAPE_TYPE.PICTURE
+            or is_stock_placeholder_picture(sh)
+            or is_decorative_shadow_picture(sh)
+        ):
             continue
         if not should_drop_body_picture(
             sh,
