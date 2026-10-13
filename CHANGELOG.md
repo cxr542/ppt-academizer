@@ -2,6 +2,10 @@
 
 형식: [Keep a Changelog](https://keepachangelog.com/). 상세는 [releases/](releases/) 참고.
 
+## [1.7.2] - 2026-10-13
+
+Removed: **"편집 가능한 본문"(`editable_body`) 옵션(1.7.0)을 되돌렸습니다.** 의도와 달랐습니다. 이 옵션은 왼쪽 그림을 버리고 이미 있는 글 상자를 하나의 문서형 블록으로 합치는 기능이었는데, 원래 필요한 것은 **그림 안에 박혀 있는 글자를 편집 가능한 텍스트로 만드는 것**(OCR)입니다. 폼 필드 `editable_body`와 환경변수 `PPT_ACADEMIZER_EDITABLE_BODY`, 경고 `BODY_REFLOWED`가 사라지고 마이그레이션은 1.6.13과 같습니다. 1.7.0 항목은 이력으로 남겨 둡니다.  
+
 ## [Unreleased]
 
 Fix: 변환 후 **OOXML 검증 하위 프로세스가 `PYTHONPATH` 없이 실행되어 항상 실패**하던 문제 — 검증기가 `scripts.safe_xml`을 임포트하는데 엔진 경로가 없어 `ModuleNotFoundError`로 죽고, 결과에는 `validate_pptx_unavailable`이라는 내부 토큰의 정보 경고만 남았습니다. Docker 이미지는 `PYTHONPATH`를 설정해 운영에서는 정상이었고, 로컬 실행에서만 검증이 건너뛰어졌습니다. 이제 엔진 경로를 넘겨 검증이 실제로 동작합니다.  

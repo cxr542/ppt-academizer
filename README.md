@@ -4,7 +4,7 @@
 
 PPT **아카데미화** 서비스 (계획: [PLAN.md](PLAN.md) · 독립 실행: [docs/standalone.md](docs/standalone.md)).
 
-**현재 릴리즈:** [1.7.0](CHANGELOG.md) · [CHANGELOG](CHANGELOG.md)
+**현재 릴리즈:** [1.7.2](CHANGELOG.md) · [CHANGELOG](CHANGELOG.md)
 
 ## 웹 UI
 
@@ -42,16 +42,6 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 `ppt-test` 폴백도 제거했습니다. 엔진을 찾지 못하면 오래된 사본으로 조용히 변환하는 대신 오류를 냅니다.
 
 환경 변수 `PPT_ENGINE_ROOT`(또는 `PPT_TEST_ROOT`)로 다른 엔진 경로를 명시할 수 있습니다.
-
-### 편집 가능한 본문 (옵션, 기본 끔)
-
-이미지를 제거·축소하고 본문 텍스트를 글머리표·문서형 블록으로 다시 배치하는 **실험 옵션**입니다
-(`AGENTS.md`의 규칙). 기본은 "원본 본문을 그대로 복사"입니다.
-
-- API: `/academize`에 `editable_body=on` (또는 `off`)
-- 서버 기본값: 환경변수 `PPT_ACADEMIZER_EDITABLE_BODY=1`
-- 변경된 슬라이드는 `BODY_REFLOWED`, 제거된 그림은 `PICTURE_DROPPED` 경고로 표시됩니다.
-`engine/`이 없다면 `git checkout -- engine`으로 복구하세요.
 
 ## 스모크·테스트
 
