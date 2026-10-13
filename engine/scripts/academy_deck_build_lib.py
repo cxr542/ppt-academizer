@@ -396,6 +396,35 @@ def _merge_seed_layout_box(
     return sl, st, w, h
 
 
+# The layout's step-number box is one digit wide (0.13in), so "10" wrapped onto two lines.
+STEP_NUMBER_BOX_MAX_EMU = int(Inches(0.3))
+STEP_NUMBER_EMU_PER_DIGIT = 170_000
+
+
+def _widen_step_number_shape(shape, step_text: str | None = None) -> bool:
+    if not getattr(shape, "has_text_frame", False):
+        return False
+    text = shape.text_frame.text.strip()
+    if len(text) < 2 or not text.isdigit() or (step_text is not None and text != step_text):
+        return False
+    if int(shape.width or 0) >= STEP_NUMBER_BOX_MAX_EMU:
+        return False
+    shape.width = max(int(shape.width), STEP_NUMBER_EMU_PER_DIGIT * len(text))
+    shape.text_frame.word_wrap = False
+    return True
+
+
+def widen_step_number_box(slide, step_text: str | None = None) -> bool:
+    """Give the small step-number placeholder room for multi-digit numbers (no wrapping).
+
+    ``step_text=None`` finds it by shape: a narrow box whose text is a 2+ digit number.
+    """
+    for shape in slide.shapes:
+        if _widen_step_number_shape(shape, step_text):
+            return True
+    return False
+
+
 def _restore_slide_placeholder_geometry(slide) -> None:
     """Apply template starter positions (not bare layout XML defaults)."""
     if _PLACEHOLDER_GEOM is None:
@@ -412,6 +441,8 @@ def _restore_slide_placeholder_geometry(slide) -> None:
         if idx in layout:
             box = _merge_seed_layout_box(box, layout[idx])
         ph.left, ph.top, ph.width, ph.height = box
+        # Every polish pass re-applies the template box; keep the step number on one line.
+        _widen_step_number_shape(ph)
 
 
 def _ph_by_idx(slide, idx: int):
@@ -1216,6 +1247,7 @@ def polish_academy_presentation(prs: Presentation) -> None:
             if title:
                 apply_slide_title_layout(slide, sw, title)
             hide_empty_governing_placeholder(slide)
+            widen_step_number_box(slide)  # last word on the number box geometry
     finally:
         _PLACEHOLDER_GEOM = prev
 

@@ -45,6 +45,10 @@ from scripts.pptx_ingest import iter_shapes, iter_shapes_abs, slide_notes_text  
 from scripts.llm_classifier import analyze_slide_with_llm  # noqa: E402
 
 import scripts.academy_deck_build_lib as adl  # noqa: E402
+from scripts.academy_deck_build_lib import (  # noqa: E402,F401  (re-exported for tests)
+    STEP_NUMBER_EMU_PER_DIGIT,
+    widen_step_number_box,
+)
 
 from scripts.academy_deck_build_lib import (  # noqa: E402
     FONT_BODY,
