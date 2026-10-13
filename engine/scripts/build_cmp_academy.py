@@ -109,23 +109,6 @@ LAYOUT_COVER = "2_표지"
 LAYOUT_TOC = "목차"  # 간지1
 LAYOUT_SECTION = "간지"  # 간지2
 LAYOUT_CONTENT = "내지_거버닝 O"
-LAYOUT_CONTENT_NO_GOV = "1_내지_거버닝 X"
-CONTENT_LAYOUTS = (LAYOUT_CONTENT, LAYOUT_CONTENT_NO_GOV)
-
-# "Editable body" mode (opt-in): drop left-column body pictures, keep one primary visual on
-# image-led slides and reflow the remaining text into document-style blocks on the
-# governing-X layout. Off by default: the default migrate path copies the body as is.
-EDITABLE_BODY_ENV = "PPT_ACADEMIZER_EDITABLE_BODY"
-EDITABLE_LEFT_PICTURE_RATIO = 0.45
-MIN_MEANINGFUL_BODY_CHARS = 80
-DOCUMENT_BODY_PT = 14
-DOCUMENT_BODY_NAME = "document_body"
-
-
-def editable_body_default() -> bool:
-    import os
-
-    return os.environ.get(EDITABLE_BODY_ENV, "").strip().lower() in ("1", "true", "yes", "on")
 
 HEADER_TITLE_TOP_MAX = 900_000
 SECTION_PH10_MIN_WIDTH = int(Inches(3.6))
@@ -161,7 +144,7 @@ def is_likely_reacademize_output(prs: Presentation, *, filename_hint: str = "") 
     dup_num_headers = 0
     content_slides = 0
     for slide in prs.slides:
-        if slide.slide_layout.name not in CONTENT_LAYOUTS:
+        if slide.slide_layout.name != LAYOUT_CONTENT:
             continue
         content_slides += 1
         t10 = t12 = ""
@@ -359,7 +342,7 @@ def is_full_bleed_picture(shape, slide_width: int, slide_height: int) -> bool:
     return False
 
 
-def is_card_panel_picture(shape, slide_height: int, slide_width: int | None = None) -> bool:
+def is_card_panel_picture(shape, slide_height: int) -> bool:
     """Rounded gray card panels exported as large pictures — drop on white academy slides."""
     if shape.shape_type != MSO_SHAPE_TYPE.PICTURE:
         return False
@@ -367,8 +350,6 @@ def is_card_panel_picture(shape, slide_height: int, slide_width: int | None = No
     top = int(shape.top or 0)
     if top < bac.HEADER_BOTTOM_EMU:
         return False
-    if slide_width is not None and int(shape.left or 0) >= slide_width * EDITABLE_LEFT_PICTURE_RATIO:
-        return False  # right-column panels are visuals to keep
     if w >= 2_800_000 and h >= 1_800_000:
         return True
     return False
@@ -491,14 +472,11 @@ def should_drop_body_picture(
     *,
     permissive_raster: bool,
     keep_full_frame_image: bool = False,
-    editable_body: bool = False,
 ) -> bool:
     """§6.7 — on diagram-heavy slides only drop slide backgrounds.
 
     ``keep_full_frame_image``: picture-only slides where the full-frame image *is*
     the content (e.g. VMware winback chart page) — do not drop it as a background.
-    ``editable_body``: also drop pictures in the left column (their text is reflowed there);
-    the caller protects the primary visual of image-led slides.
     """
     if shape.shape_type != MSO_SHAPE_TYPE.PICTURE:
         return False
@@ -508,15 +486,11 @@ def should_drop_body_picture(
     is_bleed = is_full_bleed_picture(shape, slide_width, slide_height)
     if keep_full_frame_image and (is_bg or is_bleed):
         return False
-    if editable_body and int(shape.left or 0) < slide_width * EDITABLE_LEFT_PICTURE_RATIO:
-        return True
     if permissive_raster:
-        return is_bg or (
-            editable_body and is_card_panel_picture(shape, slide_height, slide_width)
-        )
+        return is_bg
     if is_bg or is_bleed:
         return True
-    if DROP_CARD_PANEL_PICTURES and is_card_panel_picture(shape, slide_height, slide_width):
+    if DROP_CARD_PANEL_PICTURES and is_card_panel_picture(shape, slide_height):
         return True
     return False
 
@@ -563,8 +537,6 @@ def sync_raster_diagram_assets(
     skip_connectors: bool = False,
     force_permissive: bool = False,
     src_classify_empty: bool = False,
-    preserve_primary_visual: bool = False,
-    editable_body: bool = False,
 ) -> int:
     """§6.7 — copy missing chart/diagram images when dst has fewer rasters than src."""
     src_n = count_diagram_rasters(src_slide, slide_width, slide_height)
@@ -585,11 +557,6 @@ def sync_raster_diagram_assets(
 
     id_remap: dict[str, str] = {}
     copied = 0
-    primary_visual = (
-        primary_body_visual_shape(src_slide, title, governing, slide_width, slide_height)
-        if preserve_primary_visual
-        else None
-    )
     for shape in src_slide.shapes:
         if not _is_top_level_raster_candidate(shape):
             continue
@@ -601,8 +568,7 @@ def sync_raster_diagram_assets(
             slide_height,
             permissive_raster=permissive,
             keep_full_frame_image=keep_full,
-            editable_body=editable_body,
-        ) and not _same_shape(shape, primary_visual):
+        ):
             continue
         if skip_connectors and (
             bac._is_cxn_sp(shape) or shape.shape_type == MSO_SHAPE_TYPE.LINE
@@ -616,8 +582,6 @@ def sync_raster_diagram_assets(
         bac.copy_shape_hybrid(dst_slide, shape, id_remap=id_remap)
         if len(dst_slide.shapes) > n_before:
             copied += 1
-            if _same_shape(shape, primary_visual):
-                fit_visual_into_body_area(dst_slide.shapes[n_before], slide_width, slide_height)
     if copied:
         renumber_map = bac.renumber_shape_ids(dst_slide)
         bac.fix_orphan_connector_refs(dst_slide, id_remap, renumber_map)
@@ -663,16 +627,9 @@ def copy_body_shapes_filtered(
     slide_height: int,
     *,
     skip_connectors: bool = False,
-    preserve_primary_visual: bool = False,
-    editable_body: bool = False,
 ) -> dict[str, str]:
     permissive = is_raster_heavy_slide(src_slide, slide_width, slide_height)
     keep_full = is_picture_only_slide(src_slide)
-    primary_visual = (
-        primary_body_visual_shape(src_slide, title, governing, slide_width, slide_height)
-        if preserve_primary_visual
-        else None
-    )
     id_remap: dict[str, str] = {}
     for shape in src_slide.shapes:
         if not bac.is_body_shape(shape, title, governing):
@@ -683,217 +640,14 @@ def copy_body_shapes_filtered(
             slide_height,
             permissive_raster=permissive,
             keep_full_frame_image=keep_full,
-            editable_body=editable_body,
-        ) and not _same_shape(shape, primary_visual):
+        ):
             continue
         if skip_connectors and (
             bac._is_cxn_sp(shape) or shape.shape_type == MSO_SHAPE_TYPE.LINE
         ):
             continue
-        n_before = len(dst_slide.shapes)
         bac.copy_shape_hybrid(dst_slide, shape, id_remap=id_remap)
-        if _same_shape(shape, primary_visual) and len(dst_slide.shapes) > n_before:
-            fit_visual_into_body_area(dst_slide.shapes[n_before], slide_width, slide_height)
     return id_remap
-
-
-# ---------------------------------------------------------------------------------------------
-# Editable body mode (opt-in, see EDITABLE_BODY_ENV)
-# ---------------------------------------------------------------------------------------------
-
-
-def _same_shape(shape, other) -> bool:
-    if other is None:
-        return False
-    return getattr(shape, "_element", None) is getattr(other, "_element", None)
-
-
-def source_has_meaningful_body_text(src_slide, title, governing) -> bool:
-    blocks = 0
-    chars = 0
-    for shape in _walk_shapes(src_slide):
-        if not shape.has_text_frame or not (shape.text or "").strip():
-            continue
-        if not bac.is_body_shape(shape, title, governing):
-            continue
-        text = _normalize_body_block(shape.text or "")
-        if not text or _is_step_number_line(text):
-            continue
-        blocks += 1
-        chars += len(re.sub(r"\s+", "", text))
-    return chars >= MIN_MEANINGFUL_BODY_CHARS or blocks >= 3
-
-
-def primary_body_visual_shape(src_slide, title, governing, slide_width: int, slide_height: int):
-    candidates = []
-    for shape in src_slide.shapes:
-        if shape.shape_type != MSO_SHAPE_TYPE.PICTURE:
-            continue
-        if not bac.is_body_shape(shape, title, governing):
-            continue
-        if is_slide_background_picture(shape, slide_width, slide_height):
-            continue
-        area = int(shape.width or 0) * int(shape.height or 0)
-        if area <= 0:
-            continue
-        candidates.append((area, shape))
-    if not candidates:
-        return None
-    candidates.sort(key=lambda item: item[0], reverse=True)
-    return candidates[0][1]
-
-
-def should_preserve_primary_visual(
-    src_slide, title, governing, slide_width: int, slide_height: int
-) -> bool:
-    """Image-led slide with too little text to reflow: keep its largest picture."""
-    if source_has_meaningful_body_text(src_slide, title, governing):
-        return False
-    if not (
-        is_image_primary_slide(src_slide, slide_width, slide_height)
-        or is_raster_heavy_slide(src_slide, slide_width, slide_height)
-    ):
-        return False
-    return primary_body_visual_shape(src_slide, title, governing, slide_width, slide_height) is not None
-
-
-def fit_visual_into_body_area(shape, slide_width: int, slide_height: int) -> None:
-    left = CONTENT_BODY_LEFT
-    top = bac.HEADER_BOTTOM_EMU + 140_000
-    max_width = int(slide_width) - left - bac.SLIDE_MARGIN_X
-    max_height = int(slide_height) - top - bac.SLIDE_MARGIN_BOTTOM
-    width = int(shape.width or 0)
-    height = int(shape.height or 0)
-    if width <= 0 or height <= 0 or max_width <= 0 or max_height <= 0:
-        return
-    scale = min(max_width / width, max_height / height, 1.0)
-    new_width = int(width * scale)
-    new_height = int(height * scale)
-    shape.width = new_width
-    shape.height = new_height
-    shape.left = left + max(0, (max_width - new_width) // 2)
-    shape.top = top + max(0, (max_height - new_height) // 2)
-
-
-def source_has_removed_body_picture(
-    src_slide, title, governing, slide_width: int, slide_height: int
-) -> bool:
-    permissive = is_raster_heavy_slide(src_slide, slide_width, slide_height)
-    for shape in src_slide.shapes:
-        if not bac.is_body_shape(shape, title, governing):
-            continue
-        if should_drop_body_picture(
-            shape, slide_width, slide_height, permissive_raster=permissive, editable_body=True
-        ):
-            return True
-    return False
-
-
-def _normalize_body_block(text: str) -> str:
-    lines = [line.strip() for line in text.replace("\x0b", "\n").split("\n") if line.strip()]
-    return "\n".join(lines)
-
-
-def _estimate_block_lines(block: str, chars_per_line: int) -> int:
-    total = 0
-    for line in block.split("\n"):
-        total += max(1, (len(line) + chars_per_line - 1) // chars_per_line)
-    return total + 1
-
-
-def _add_document_textbox(
-    slide, left: int, top: int, width: int, height: int, blocks: list[str]
-) -> None:
-    box = slide.shapes.add_textbox(left, top, width, height)
-    try:
-        box.name = DOCUMENT_BODY_NAME  # typography polish leaves these boxes alone
-    except Exception:
-        pass
-    tf = box.text_frame
-    configure_text_frame_for_wrap(tf)
-    tf.text = "\n\n".join(blocks)
-    for para in tf.paragraphs:
-        para.alignment = PP_ALIGN.LEFT
-        for run in para.runs:
-            run.font.size = Pt(DOCUMENT_BODY_PT)
-
-
-MIN_OBSTACLE_AREA = 300_000 * 300_000  # ~0.1 in²; thin connectors and rules do not count
-
-
-def _body_obstacles(slide, text_shapes) -> list:
-    """Non-text shapes left in the body area (tables, pictures, charts, panels, groups)."""
-    text_ids = {id(sh._element) for sh in text_shapes}
-    return [
-        sh
-        for sh in slide.shapes
-        if id(sh._element) not in text_ids
-        and not sh.is_placeholder
-        and int(sh.top or 0) + int(sh.height or 0) > bac.HEADER_BOTTOM_EMU
-        and int(sh.width or 0) * int(sh.height or 0) >= MIN_OBSTACLE_AREA
-    ]
-
-
-def reflow_governing_x_body_text(slide, slide_width: int, slide_height: int) -> bool:
-    """Replace the copied body text boxes with document-style blocks (same text, de-duplicated).
-
-    Returns False (and leaves the slide untouched) when it is not safe: no text, or a table /
-    picture / panel sits in the left part of the body where the text would be placed.
-    """
-    body_shapes = [
-        sh
-        for sh in slide.shapes
-        if not sh.is_placeholder
-        and sh.has_text_frame
-        and int(sh.top or 0) >= bac.HEADER_BOTTOM_EMU
-        and (sh.text or "").strip()
-    ]
-    if not body_shapes:
-        return False
-
-    obstacles = _body_obstacles(slide, body_shapes)
-    if any(int(o.left or 0) < slide_width * 0.42 for o in obstacles):
-        return False
-    visual_left = min((int(o.left or 0) for o in obstacles), default=None)
-
-    blocks: list[str] = []
-    seen: set[str] = set()
-    for shape in sorted(body_shapes, key=lambda sh: (int(sh.top or 0), int(sh.left or 0))):
-        block = _normalize_body_block(shape.text or "")
-        key = " ".join(block.split())
-        if not block or key in seen:
-            continue
-        seen.add(key)
-        blocks.append(block)
-    if not blocks:
-        return False
-
-    for shape in body_shapes:
-        shape._element.getparent().remove(shape._element)
-
-    top = bac.HEADER_BOTTOM_EMU + 140_000
-    bottom = int(slide_height) - bac.SLIDE_MARGIN_BOTTOM
-    height = max(bac.MIN_SHAPE_H, bottom - top)
-    if visual_left is not None:
-        width = max(bac.MIN_SHAPE_W, visual_left - CONTENT_BODY_LEFT - CONTENT_COLUMN_GAP)
-        _add_document_textbox(slide, CONTENT_BODY_LEFT, top, width, height, blocks)
-        return True
-
-    full_width = int(slide_width) - CONTENT_BODY_LEFT - bac.SLIDE_MARGIN_X
-    chars_per_line = max(36, int(full_width / 135_000))
-    estimated_lines = sum(_estimate_block_lines(block, chars_per_line) for block in blocks)
-    if estimated_lines * 190_000 <= height or len(blocks) < 3:
-        _add_document_textbox(slide, CONTENT_BODY_LEFT, top, full_width, height, blocks)
-        return True
-
-    mid = max(1, len(blocks) // 2)
-    left_blocks, right_blocks = blocks[:mid], blocks[mid:]
-    right_left = int(slide_width * CONTENT_RIGHT_COL_RATIO)
-    left_width = right_left - CONTENT_BODY_LEFT - CONTENT_COLUMN_GAP
-    right_width = int(slide_width) - right_left - bac.SLIDE_MARGIN_X
-    _add_document_textbox(slide, CONTENT_BODY_LEFT, top, left_width, height, left_blocks)
-    _add_document_textbox(slide, right_left, top, right_width, height, right_blocks)
-    return True
 
 
 def _luminance(rgb: RGBColor) -> float:
@@ -999,8 +753,6 @@ def apply_academy_body_shape_typography(slide) -> None:
                     continue
             if not shape.has_text_frame:
                 continue
-            if getattr(shape, "name", "") == DOCUMENT_BODY_NAME:
-                continue  # reflowed document block (editable body): keeps its own size
             text = (shape.text or "").strip()
             if not text:
                 continue
@@ -1024,41 +776,6 @@ def hide_empty_governing_placeholder(slide) -> None:
         shape.width = 1
         shape.height = 1
         return
-
-
-def restore_content_step_placeholder(slide) -> None:
-    """Put the step-number placeholder (ph12) back on its layout box after polish expanded it."""
-    layout_box = None
-    for layout_ph in slide.slide_layout.placeholders:
-        if layout_ph.placeholder_format.idx == 12:
-            layout_box = (
-                int(layout_ph.left),
-                int(layout_ph.top),
-                int(layout_ph.width),
-                int(layout_ph.height),
-            )
-            break
-    if layout_box is None:
-        return
-    for shape in slide.placeholders:
-        if shape.placeholder_format.idx == 12:
-            shape.left, shape.top, shape.width, shape.height = layout_box
-            return
-
-
-def remove_empty_body_placeholders(prs: Presentation) -> None:
-    for slide in prs.slides:
-        if slide.slide_layout.name in CONTENT_LAYOUTS:
-            restore_content_step_placeholder(slide)
-            hide_empty_governing_placeholder(slide)
-
-
-def remove_empty_body_placeholders_in_file(path: Path) -> None:
-    prs = Presentation(str(path))
-    remove_empty_body_placeholders(prs)
-    tmp = path.with_suffix(".no-empty-body.pptx")
-    prs.save(str(tmp))
-    tmp.replace(path)
 
 
 def apply_content_header_geometry(slide, slide_width: int | None = None) -> None:
@@ -1340,8 +1057,6 @@ def dropped_unrepeated_pictures(
     slide_width: int,
     slide_height: int,
     hash_counts: dict[str, int],
-    *,
-    editable_body: bool = False,
 ) -> list[dict]:
     """Large pictures the body filter treats as a slide background that appear on one slide only.
 
@@ -1361,7 +1076,6 @@ def dropped_unrepeated_pictures(
             slide_height,
             permissive_raster=permissive,
             keep_full_frame_image=keep_full,
-            editable_body=editable_body,
         ):
             continue
         try:
@@ -1639,21 +1353,10 @@ def migrate_content_body(
     *,
     src_classify_empty: bool = False,
     brand_pack: dict | None = None,
-    editable_body: bool = False,
 ) -> tuple[bool, bool, int, bool, bool, str | None]:
-    """Returns (radial, skip_relayout, rasters, canvas_rescaled, preserve_style, pattern).
-
-    ``editable_body`` (opt-in): see EDITABLE_BODY_ENV.
-    """
+    """Returns (radial, skip_relayout, rasters, canvas_rescaled, preserve_style, pattern)."""
     title, governing = extract_header(src_slide, "content")
     gov = governing or ""
-    has_gov = bool(gov and len(gov) <= bac.GOV_MAX_LEN)
-    removed_body_picture = editable_body and source_has_removed_body_picture(
-        src_slide, title, governing, slide_width, slide_height
-    )
-    preserve_primary_visual = editable_body and should_preserve_primary_visual(
-        src_slide, title, governing, slide_width, slide_height
-    )
     radial = is_radial_diagram_slide(src_slide, slide_width, slide_height)
     src_sw, src_sh = _presentation_dims(src_slide)
     canvas_mismatch = needs_canvas_rescale(src_sw, src_sh, slide_width, slide_height)
@@ -1695,8 +1398,6 @@ def migrate_content_body(
         slide_width,
         slide_height,
         skip_connectors=radial,
-        preserve_primary_visual=preserve_primary_visual,
-        editable_body=editable_body,
     )
     restored = sync_raster_diagram_assets(
         src_slide,
@@ -1708,8 +1409,6 @@ def migrate_content_body(
         skip_connectors=radial,
         force_permissive=force_raster,
         src_classify_empty=src_classify_empty,
-        preserve_primary_visual=preserve_primary_visual,
-        editable_body=editable_body,
     )
     renumber_map = bac.renumber_shape_ids(slide)
     if not radial:
@@ -1720,9 +1419,6 @@ def migrate_content_body(
             slide, src_sw, src_sh, slide_width, slide_height
         )
         canvas_rescaled = True
-
-    if editable_body and not has_gov and not radial and removed_body_picture:
-        reflow_governing_x_body_text(slide, slide_width, slide_height)
 
     pattern_name = None
     # 사용자의 요청에 따라 본문 자동 레이아웃(카드 패턴 등)을 모두 비활성화하고 그대로 복사합니다.
@@ -1783,15 +1479,8 @@ def migrate_cmp_deck(
     template_path: Path | None = None,
     skip_powerpoint_repair: bool = True,
     skip_ooxml_repair: bool = False,
-    editable_body: bool | None = None,
 ) -> tuple[Path, list[dict], int]:
-    """§7 migrate: seed clone + shape transplant. Returns (output_path, warnings).
-
-    ``editable_body``: reflow image-led/left-picture slides into document-style text blocks.
-    None → the ``PPT_ACADEMIZER_EDITABLE_BODY`` environment variable (default off).
-    """
-    if editable_body is None:
-        editable_body = editable_body_default()
+    """§7 migrate: seed clone + shape transplant. Returns (output_path, warnings)."""
     source = Path(source).resolve()
     output = Path(output).resolve()
     template = Path(template_path).resolve() if template_path else resolve_academy_template_path()
@@ -1855,7 +1544,6 @@ def migrate_cmp_deck(
             warnings,
             skip_ooxml_repair=skip_ooxml_repair,
             skip_powerpoint_repair=skip_powerpoint_repair,
-            editable_body=editable_body,
         )
     finally:
         adl._PLACEHOLDER_GEOM = None
@@ -1873,7 +1561,6 @@ def _migrate_cmp_deck_body(
     *,
     skip_ooxml_repair: bool,
     skip_powerpoint_repair: bool,
-    editable_body: bool = False,
 ) -> tuple[Path, list[dict], int]:
     global CLR_DK1, CLR_DK2, CLR_ACCENT1
     brand_dir = resolve_brand_dir(template)
@@ -1903,7 +1590,6 @@ def _migrate_cmp_deck_body(
     for name in (LAYOUT_COVER, LAYOUT_TOC, LAYOUT_SECTION, LAYOUT_CONTENT):
         if name not in seeds:
             raise ValueError(f"Template missing starter slide for layout {name!r}")
-    use_no_gov_layout = editable_body and LAYOUT_CONTENT_NO_GOV in seeds
 
     initial_part_ids = {id(s.part) for s in prs.slides}
 
@@ -1939,12 +1625,7 @@ def _migrate_cmp_deck_body(
             copy_speaker_notes(src_slide, slide)
         else:
             content_step += 1
-            layout_name = LAYOUT_CONTENT
-            if use_no_gov_layout:
-                _hdr_title, _hdr_gov = extract_header(src_slide, "content")
-                if not (_hdr_gov and len(_hdr_gov) <= bac.GOV_MAX_LEN):
-                    layout_name = LAYOUT_CONTENT_NO_GOV  # AGENTS.md: no governing message → X layout
-            slide = duplicate_slide_from_seed(prs, seeds[layout_name])
+            slide = duplicate_slide_from_seed(prs, seeds[LAYOUT_CONTENT])
             _prepare_slide_for_editing(slide)
             copy_speaker_notes(src_slide, slide)
             charts_in = _count_charts(src_slide)
@@ -1972,17 +1653,7 @@ def _migrate_cmp_deck_body(
                 sh,
                 src_classify_empty=src_empty,
                 brand_pack=brand_pack,
-                editable_body=editable_body,
             )
-            if any(getattr(s, "name", "") == DOCUMENT_BODY_NAME for s in slide.shapes):
-                warnings.append(
-                    {
-                        "code": "BODY_REFLOWED",
-                        "level": "info",
-                        "message": f"Source slide {src_idx + 1}: body text reflowed as document blocks",
-                        "src_index": src_idx,
-                    }
-                )
             if radial:
                 radial_slides.append(slide)
             if skip_relayout:
@@ -2025,9 +1696,7 @@ def _migrate_cmp_deck_body(
                         "text": text,
                     }
                 )
-            for dropped in dropped_unrepeated_pictures(
-                src_slide, sw, sh, picture_counts, editable_body=editable_body
-            ):
+            for dropped in dropped_unrepeated_pictures(src_slide, sw, sh, picture_counts):
                 warnings.append(
                     {
                         "code": "PICTURE_DROPPED",
@@ -2099,7 +1768,7 @@ def _migrate_cmp_deck_body(
         bac.polish_slide(
             slide, skip_body_dedup=radial or canvas_rescaled or preserve_body_style
         )
-        if slide.slide_layout.name in CONTENT_LAYOUTS:
+        if slide.slide_layout.name == LAYOUT_CONTENT:
             title = ""
             for sh in slide.placeholders:
                 if sh.placeholder_format.idx == 10:
@@ -2113,14 +1782,14 @@ def _migrate_cmp_deck_body(
                     apply_academy_body_shape_typography(slide)
         if not radial and not canvas_rescaled and not preserve_body_style:
             bac.fit_body_shapes(slide, sw, sh)
-        if slide.slide_layout.name in CONTENT_LAYOUTS and not skip_relayout:
+        if slide.slide_layout.name == LAYOUT_CONTENT and not skip_relayout:
             relayout_content_columns(slide, sw)
             t = ""
             for sh in slide.placeholders:
                 if sh.placeholder_format.idx == 10:
                     t = normalize_slide_title(sh.text or "")
             apply_slide_title_layout(slide, sw, t)
-        elif slide.slide_layout.name in CONTENT_LAYOUTS and skip_relayout:
+        elif slide.slide_layout.name == LAYOUT_CONTENT and skip_relayout:
             t = ""
             for sh in slide.placeholders:
                 if sh.placeholder_format.idx == 10:
@@ -2138,7 +1807,7 @@ def _migrate_cmp_deck_body(
     polish_academy_presentation(prs)
     for slide in prs.slides:
         if (
-            slide.slide_layout.name in CONTENT_LAYOUTS
+            slide.slide_layout.name == LAYOUT_CONTENT
             and slide not in canvas_rescaled_slides
             and slide not in preserve_body_style_slides
         ):
@@ -2155,7 +1824,7 @@ def _migrate_cmp_deck_body(
             name = slide.slide_layout.name
             if name == LAYOUT_COVER:
                 apply_brand_pack_to_slide(slide, brand_pack, kind="cover")
-            elif name in CONTENT_LAYOUTS:
+            elif name == LAYOUT_CONTENT:
                 apply_brand_pack_to_slide(
                     slide, brand_pack, kind="content", icon_hits=icon_hits
                 )
@@ -2183,8 +1852,6 @@ def _migrate_cmp_deck_body(
         )
 
     save_academy_deck(prs, output)
-    if editable_body:
-        remove_empty_body_placeholders_in_file(output)
 
     validate_script = PPT_TEST / "scripts" / "validate_pptx.py"
     if validate_script.is_file():
@@ -2217,8 +1884,6 @@ def _migrate_cmp_deck_body(
         from scripts.academy_deck_build_lib import finalize_academy_package
 
         finalize_academy_package(output)
-        if editable_body:
-            remove_empty_body_placeholders_in_file(output)
 
     raw_output = output
     if not skip_powerpoint_repair:
@@ -2246,7 +1911,6 @@ def _migrate_cmp_deck_body(
             "source_slides": len(src.slides),
             "plan_entries": len(plan),
             "expected_slides": expected_slides,
-            "editable_body": editable_body,
         },
     )
     return output, warnings, slide_count
