@@ -37,6 +37,7 @@ from scripts.academy_template import resolve_academy_template_path  # noqa: E402
 from scripts.deck_migrate_config import (  # noqa: E402
     GENERIC_KIND,
     DeckMigrateConfig,
+    closing_slide_patterns,
     config_for_kind,
     migrate_config_for_source,
 )
@@ -278,6 +279,36 @@ def extract_header(src_slide, kind: str) -> tuple[str | None, str | None]:
     return title, gov
 
 
+def _slide_texts(src_slide) -> list[dict]:
+    return analyze_slide_with_llm(src_slide).get("blocks") or []
+
+
+def is_closing_slide(src_slide, index: int, slide_count: int, cfg: DeckMigrateConfig) -> bool:
+    """A short, text-only slide whose *main line* is a closing phrase ("감사합니다", "Thank you",
+    "Q&A" …). It need not be the last slide (a source-credits slide often follows it).
+
+    Judged on the biggest line, not on any text box, so a content slide that merely mentions the
+    word, or a small "THANK YOU" kicker over another title, is never rebuilt as a divider.
+    """
+    if index in cfg.part_cover_indices:
+        return False
+    info = analyze_slide_with_llm(src_slide)
+    blocks = info.get("blocks") or []
+    if not blocks or len(blocks) > 4 or info.get("body_heavy"):
+        return False
+    main = closing_title(src_slide) or ""
+    return any(p.search(main) for p in closing_slide_patterns())
+
+
+def closing_title(src_slide) -> str | None:
+    """The biggest line of a closing slide (the kicker above it is not the title)."""
+    blocks = _slide_texts(src_slide)
+    if not blocks:
+        return None
+    best = max(blocks, key=lambda b: (b.get("font_size") or 0, -b.get("top", 0)))
+    return _normalize_header_line(best.get("text") or "") or None
+
+
 def build_slide_plan(
     src: Presentation,
     cfg: DeckMigrateConfig | None = None,
@@ -296,6 +327,9 @@ def build_slide_plan(
         kind = classify_slide(slide, i, cfg.part_cover_indices)
         if kind == "empty":
             plan.append((i, "content"))
+        elif is_closing_slide(slide, i, len(src.slides), cfg):
+            # A thank-you slide is not a cover; build it as a divider (no chapter number).
+            plan.append((i, "section"))
         else:
             plan.append((i, kind))
     return plan
@@ -1335,11 +1369,15 @@ def section_dropped_texts(src_slide, title: str | None) -> list[str]:
     return out
 
 
-def fill_section_from_source(slide, src_slide, chapter_num: int) -> None:
-    title, _ = extract_header(src_slide, "section")
+def fill_section_from_source(
+    slide, src_slide, chapter_num: int | None, *, title: str | None = None
+) -> None:
+    """Divider slide; ``chapter_num=None`` leaves the number blank (closing slide)."""
+    if title is None:
+        title, _ = extract_header(src_slide, "section")
     _fill_chapter_guide(
         slide,
-        [title or "", str(chapter_num)],
+        [title or "", "" if chapter_num is None else str(chapter_num)],
         title_font_pt=36,
         body_font_pt=16,
     )
@@ -1685,11 +1723,18 @@ def _migrate_cmp_deck_body(
             copy_speaker_notes(src_slide, slide)
         elif kind == "section":
             content_step = 0
-            section_num += 1
+            closing = is_closing_slide(src_slide, src_idx, len(src.slides), cfg)
+            if closing:
+                divider_title = closing_title(src_slide)
+            else:
+                section_num += 1
+                divider_title = extract_header(src_slide, "section")[0]
             slide = duplicate_slide_from_seed(prs, seeds[LAYOUT_SECTION])
             _prepare_slide_for_editing(slide)
-            fill_section_from_source(slide, src_slide, section_num)
-            for dropped_text in section_dropped_texts(src_slide, extract_header(src_slide, "section")[0]):
+            fill_section_from_source(
+                slide, src_slide, None if closing else section_num, title=divider_title
+            )
+            for dropped_text in section_dropped_texts(src_slide, divider_title):
                 warnings.append(
                     {
                         "code": "SECTION_TEXT_DROPPED",
