@@ -93,3 +93,15 @@ def test_body_heavy_flag_for_first_slide_decisions() -> None:
     from scripts.llm_classifier import analyze_slide_with_llm
 
     assert analyze_slide_with_llm(only_table)["body_heavy"] is True
+
+
+def test_cover_needs_a_32pt_title_not_just_any_explicit_font_size() -> None:
+    """The threshold compared EMU with 3200, so a 30pt (even 12pt) title qualified as a cover."""
+    prs = Presentation()
+    for pt, expected in ((12, "cover"), (30, "cover"), (32, "cover"), (44, "cover")):
+        slide = prs.slides.add_slide(prs.slide_layouts[6])
+        box = slide.shapes.add_textbox(Inches(1), Inches(0.5), Inches(8), Inches(1))
+        box.text_frame.text = "배포 파이프라인"
+        box.text_frame.paragraphs[0].runs[0].font.size = Pt(pt)
+        layout = analyze_slide_layout(slide)["layout"]
+        assert (layout == "cover") == (pt >= 32), (pt, layout)

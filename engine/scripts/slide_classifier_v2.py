@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from pptx.enum.shapes import MSO_SHAPE_TYPE
+from pptx.util import Pt
 
 from scripts.pptx_ingest import slide_text_blocks
 
@@ -11,6 +12,11 @@ from scripts.pptx_ingest import slide_text_blocks
 # is dropped. Only treat a slide as one when its non-title text is this short; otherwise fall back
 # to "content", which keeps every text box and picture.
 COVER_MAX_BODY_CHARS = 80
+
+# A cover title is >= 32pt. ``slide_text_blocks`` reports font sizes in EMU (Pt(32) == 406400),
+# but this was compared with 3200 (centipoints), so ANY explicit font size passed and every
+# slide with <= 4 text blocks scored as a cover.
+COVER_TITLE_MIN_EMU = int(Pt(32))
 
 
 def has_data_object(slide) -> bool:
@@ -128,7 +134,7 @@ def analyze_slide_layout(slide) -> dict[str, Any]:
     }
 
     if blocks:
-        if len(blocks) <= 4 and title_band and title_band.avg_font_size >= 3200:
+        if len(blocks) <= 4 and title_band and title_band.avg_font_size >= COVER_TITLE_MIN_EMU:
             scores["cover"] += 50
             if not content_bands:
                 scores["cover"] += 30
