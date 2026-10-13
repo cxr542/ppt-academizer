@@ -140,6 +140,7 @@ def analyze_slide_layout(slide) -> dict[str, Any]:
         "empty": 100.0 if not blocks else 0.0,
     }
 
+    divider_band: TextBand | None = None
     if blocks:
         if (
             len(blocks) <= 4
