@@ -18,6 +18,13 @@ COVER_MAX_BODY_CHARS = 80
 # slide with <= 4 text blocks scored as a cover.
 COVER_TITLE_MIN_EMU = int(Pt(32))
 
+# A title that starts in the top header band (inches from the top) is a content-slide title:
+# real cover titles sit lower on the slide. Without this, a content slide holding a chart
+# *picture* plus a caption (<= 4 text blocks, 32pt+ title, nothing for ``has_data_object``)
+# scored as a cover and lost its pictures. Misreading a cover as content keeps everything,
+# so this errs on the safe side; slide 0 is still forced to be a cover by the plan builder.
+COVER_TITLE_MIN_TOP_IN = 1.0
+
 
 def has_data_object(slide) -> bool:
     """True when the slide carries a table, chart, SmartArt, OLE object or any other graphic
@@ -134,7 +141,12 @@ def analyze_slide_layout(slide) -> dict[str, Any]:
     }
 
     if blocks:
-        if len(blocks) <= 4 and title_band and title_band.avg_font_size >= COVER_TITLE_MIN_EMU:
+        if (
+            len(blocks) <= 4
+            and title_band
+            and title_band.avg_font_size >= COVER_TITLE_MIN_EMU
+            and title_band.top >= COVER_TITLE_MIN_TOP_IN
+        ):
             scores["cover"] += 50
             if not content_bands:
                 scores["cover"] += 30

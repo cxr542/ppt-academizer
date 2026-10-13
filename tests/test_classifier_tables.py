@@ -10,9 +10,14 @@ from pptx.util import Inches, Pt
 from scripts.slide_classifier_v2 import analyze_slide_layout, has_data_object
 
 
-def _titled_slide(prs, text="구분별 비교"):
+# Real cover titles sit mid-slide; content titles sit in the top header band.
+COVER_TOP_IN = 1.6
+CONTENT_TOP_IN = 0.6
+
+
+def _titled_slide(prs, text="구분별 비교", top=COVER_TOP_IN):
     slide = prs.slides.add_slide(prs.slide_layouts[6])
-    box = slide.shapes.add_textbox(Inches(1), Inches(0.5), Inches(8), Inches(1))
+    box = slide.shapes.add_textbox(Inches(1), Inches(top), Inches(8), Inches(1))
     box.text_frame.text = text
     box.text_frame.paragraphs[0].runs[0].font.size = Pt(40)  # >= 32pt: the cover heuristic
     return slide
@@ -54,7 +59,7 @@ def test_table_inside_group_is_detected() -> None:
 def _slide_with_blocks(prs, title, others):
     slide = _titled_slide(prs, title)
     for i, text in enumerate(others):
-        box = slide.shapes.add_textbox(Inches(1), Inches(2 + i * 1.2), Inches(8), Inches(1))
+        box = slide.shapes.add_textbox(Inches(1), Inches(3.4 + i * 1.2), Inches(8), Inches(1))
         box.text_frame.text = text
         box.text_frame.paragraphs[0].runs[0].font.size = Pt(16)
     return slide
@@ -100,8 +105,40 @@ def test_cover_needs_a_32pt_title_not_just_any_explicit_font_size() -> None:
     prs = Presentation()
     for pt, expected in ((12, "cover"), (30, "cover"), (32, "cover"), (44, "cover")):
         slide = prs.slides.add_slide(prs.slide_layouts[6])
-        box = slide.shapes.add_textbox(Inches(1), Inches(0.5), Inches(8), Inches(1))
+        box = slide.shapes.add_textbox(Inches(1), Inches(COVER_TOP_IN), Inches(8), Inches(1))
         box.text_frame.text = "배포 파이프라인"
         box.text_frame.paragraphs[0].runs[0].font.size = Pt(pt)
         layout = analyze_slide_layout(slide)["layout"]
         assert (layout == "cover") == (pt >= 32), (pt, layout)
+
+
+def test_header_title_with_chart_pictures_is_content_not_cover(tmp_path) -> None:
+    """Chart pasted as pictures + caption under a top-of-slide 33pt title was read as a cover
+    and its pictures were dropped (real deck: VMware win-back report, slide 6)."""
+    from base64 import b64decode
+
+    png = tmp_path / "chart.png"
+    png.write_bytes(
+        b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAEklEQVR4nGP4z8AAAAMBAQDJ"
+            "/pLvAAAAAElFTkSuQmCC"
+        )
+    )
+    prs = Presentation()
+    slide = _titled_slide(prs, "주요 성장 지표 추이 (2023-2025)", top=CONTENT_TOP_IN)
+    slide.shapes[0].text_frame.paragraphs[0].runs[0].font.size = Pt(33)
+    note = slide.shapes.add_textbox(Inches(1.5), Inches(3.6), Inches(7), Inches(0.3))
+    note.text_frame.text = "※ 2023년 대비 2025년 결산 기준의 폭발적 성장세 증명"
+    note.text_frame.paragraphs[0].runs[0].font.size = Pt(15)
+    slide.shapes.add_picture(str(png), Inches(1), Inches(1.6), Inches(4), Inches(2))
+    slide.shapes.add_picture(str(png), Inches(5.2), Inches(1.6), Inches(4), Inches(2))
+
+    result = analyze_slide_layout(slide)
+    assert result["layout"] == "content"
+    assert result["scores"]["cover"] == 0.0
+
+
+def test_mid_slide_title_still_scores_as_cover() -> None:
+    prs = Presentation()
+    slide = _titled_slide(prs, "경청해 주셔서 감사합니다", top=COVER_TOP_IN)
+    assert analyze_slide_layout(slide)["layout"] == "cover"
