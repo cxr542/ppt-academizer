@@ -88,3 +88,12 @@ def test_engine_warning_codes_never_leak_english_internal_text() -> None:
         out = format_warning({"code": code, "message": msg, "count": 2})
         assert _HANGUL.search(out["message"]), code
         assert "/tmp" not in out["message"], code
+
+
+def test_placeholder_image_warning_says_what_was_dropped() -> None:
+    out = format_warning({"code": "SOURCE_PLACEHOLDER_IMAGE", "src_index": 7, "count": 2, "message": "x"})
+    assert out["level"] == "warn"
+    assert out["message"].startswith("원본 8장: ")
+    assert "2개" in out["message"] and "제외" in out["message"]
+    # no longer claims a re-export always fixes it
+    assert "다시 내보내면 그림이 복원됩니다" not in out["message"]
