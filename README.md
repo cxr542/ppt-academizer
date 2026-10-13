@@ -4,7 +4,7 @@
 
 PPT **아카데미화** 서비스 (계획: [PLAN.md](PLAN.md) · 독립 실행: [docs/standalone.md](docs/standalone.md)).
 
-**현재 릴리즈:** [1.7.7](CHANGELOG.md) · [CHANGELOG](CHANGELOG.md)
+**현재 릴리즈:** [1.7.8](CHANGELOG.md) · [CHANGELOG](CHANGELOG.md)
 
 ## 웹 UI
 
