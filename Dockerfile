@@ -7,6 +7,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxml2 libxslt1.1 \
     git \
     openssh-client \
+    tesseract-ocr tesseract-ocr-kor tesseract-ocr-eng \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .

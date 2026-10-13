@@ -249,6 +249,7 @@ async def academize(
     estimated_output_slides: str = Form(""),
     deck_title: str = Form(""),
     deck_subtitle: str = Form("PPT 아카데미화"),
+    ocr_images: str = Form(""),
 ):
     tmp: Path | None = None
     scheduled_cleanup = False
@@ -272,6 +273,7 @@ async def academize(
             profile=profile,
             quality_mode=quality_mode,
             estimated_output_slides=est_out,
+            ocr_images=ocr_images.strip().lower() in ("1", "true", "yes", "on"),
         )
         scheduled_cleanup = True
         return _academize_file_response(

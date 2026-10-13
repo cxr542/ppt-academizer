@@ -118,6 +118,10 @@ def format_warning(w: dict) -> dict:
             "(SVG·파트너 덱에서 자주 발생)",
         ),
         "TEXT_NOT_EXTRACTED": ("warn", ""),
+        "IMAGE_OCR_UNAVAILABLE": (
+            "warn",
+            "그림 속 글자 변환(OCR)을 요청했지만 서버에 Tesseract가 없어 건너뛰었습니다.",
+        ),
     }
 
     level = "info"
@@ -133,6 +137,19 @@ def format_warning(w: dict) -> dict:
             + f"상단 영역의 텍스트 \"{text}\"을(를) 제목과 겹치지 않도록 제외했습니다. "
             "필요하면 원본에서 옮겨 주세요.",
         }
+
+    if code == "IMAGE_OCR_DONE":
+        pics, boxes = int(w.get("pictures") or 0), int(w.get("boxes") or 0)
+        failed = int(w.get("failed") or 0)
+        msg = (
+            f"그림 {pics}개에서 글자 {boxes}줄을 편집 가능한 텍스트 상자로 만들었습니다. "
+            "인식이 틀린 글자는 상자 안에서 고치고, 필요 없으면 상자를 지우면 원본 그림이 보입니다."
+            if boxes
+            else f"그림 {pics}개를 검사했지만 옮길 글자를 찾지 못했습니다."
+        )
+        if failed:
+            msg += f" ({failed}개는 처리하지 못했습니다.)"
+        return {"code": code, "level": "info", "slide": None, "message": msg}
 
     if code in templates:
         entry = templates[code]

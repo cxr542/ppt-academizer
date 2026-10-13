@@ -170,6 +170,7 @@ def _academize_migrate_cmp(
     *,
     tmp: Path,
     quality_mode: QualityMode = "standard",
+    ocr_images: bool = False,
 ) -> tuple[Path, list[dict], int, dict[str, Any]]:
     from scripts.build_cmp_academy import migrate_cmp_deck
 
@@ -203,6 +204,10 @@ def _academize_migrate_cmp(
         )
     raw_warnings.extend(maybe_mac_powerpoint_repair(output))
     finalize_academy_package(output)
+    if ocr_images:
+        from core.image_ocr import apply_image_ocr
+
+        raw_warnings.extend(apply_image_ocr(output))
     raw_warnings.insert(
         0,
         {"code": "PIPELINE_MIGRATE_CMP", "message": ""},
@@ -238,6 +243,7 @@ def academize_pptx(
     profile: Profile = "auto",
     quality_mode: str = "standard",
     estimated_output_slides: int | None = None,
+    ocr_images: bool = False,
 ) -> tuple[Path, list[dict], int, dict[str, Any]]:
     """Convert *source* pptx to academy deck.
 
@@ -262,7 +268,9 @@ def academize_pptx(
     )
 
     if route == "migrate_cmp":
-        return _academize_migrate_cmp(source, tmp=tmp, quality_mode=mode)
+        return _academize_migrate_cmp(
+            source, tmp=tmp, quality_mode=mode, ocr_images=ocr_images
+        )
     if route == "google_image":
         route = "spec"
     return _academize_spec_path(
