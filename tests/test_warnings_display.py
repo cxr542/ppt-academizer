@@ -97,3 +97,9 @@ def test_placeholder_image_warning_says_what_was_dropped() -> None:
     assert "2개" in out["message"] and "제외" in out["message"]
     # no longer claims a re-export always fixes it
     assert "다시 내보내면 그림이 복원됩니다" not in out["message"]
+
+
+def test_section_text_dropped_warning_names_the_text() -> None:
+    out = format_warning({"code": "SECTION_TEXT_DROPPED", "src_index": 1, "text": "글로벌 가상화 시장"})
+    assert out["level"] == "info" and out["message"].startswith("원본 2장: ")
+    assert "글로벌 가상화 시장" in out["message"]

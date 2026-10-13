@@ -1324,6 +1324,17 @@ def fill_toc_from_source(slide, src_slide) -> None:
     fill_toc(slide, entries)
 
 
+def section_dropped_texts(src_slide, title: str | None) -> list[str]:
+    """Text on a divider other than its title: the 간지 layout has no slot for it."""
+    kept = _normalize_header_line(title) if title else ""
+    out: list[str] = []
+    for block in analyze_slide_with_llm(src_slide).get("blocks") or []:
+        text = _normalize_header_line(block.get("text") or "")
+        if text and text != kept:
+            out.append(text)
+    return out
+
+
 def fill_section_from_source(slide, src_slide, chapter_num: int) -> None:
     title, _ = extract_header(src_slide, "section")
     _fill_chapter_guide(
@@ -1678,6 +1689,16 @@ def _migrate_cmp_deck_body(
             slide = duplicate_slide_from_seed(prs, seeds[LAYOUT_SECTION])
             _prepare_slide_for_editing(slide)
             fill_section_from_source(slide, src_slide, section_num)
+            for dropped_text in section_dropped_texts(src_slide, extract_header(src_slide, "section")[0]):
+                warnings.append(
+                    {
+                        "code": "SECTION_TEXT_DROPPED",
+                        "level": "info",
+                        "message": f"Source slide {src_idx + 1}: divider text dropped: {dropped_text!r}",
+                        "src_index": src_idx,
+                        "text": dropped_text,
+                    }
+                )
             copy_speaker_notes(src_slide, slide)
         else:
             content_step += 1

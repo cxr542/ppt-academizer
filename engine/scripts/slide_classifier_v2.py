@@ -158,7 +158,14 @@ def analyze_slide_layout(slide) -> dict[str, Any]:
             if num_lines >= 2:
                 scores["toc"] += 40
 
-        if len(blocks) <= 3 and title_band and title_band.top >= 2.0 and not content_bands:
+        # A divider's title sits mid-slide, so it is never in ``title_band`` (top < 2.0in only);
+        # judge it by the largest band instead. A short subtitle under it is fine: real body
+        # text is caught by the ``body_heavy`` guard below.
+        divider_band = title_band
+        if divider_band is None and bands:
+            divider_band = max(bands, key=lambda b: (b.avg_font_size, -b.top))
+            divider_band = divider_band if divider_band.avg_font_size >= COVER_TITLE_MIN_EMU else None
+        if len(blocks) <= 3 and divider_band and divider_band.top >= 2.0:
             scores["section"] += 60
 
         scores["content"] = 40
@@ -166,8 +173,9 @@ def analyze_slide_layout(slide) -> dict[str, Any]:
             scores["content"] += len(blocks) * 2
 
     body_chars = 0
-    if blocks and title_band is not None:
-        title_ids = {id(b) for b in title_band.blocks}
+    lead_band = title_band or divider_band
+    if blocks and lead_band is not None:
+        title_ids = {id(b) for b in lead_band.blocks}
         body_chars = sum(len(b["text"]) for b in blocks if id(b) not in title_ids)
     data_object = has_data_object(slide)
     body_heavy = data_object or (bool(blocks) and body_chars > COVER_MAX_BODY_CHARS)
@@ -180,6 +188,8 @@ def analyze_slide_layout(slide) -> dict[str, Any]:
             scores["content"] = max(scores["content"], 41)
 
     best_layout = max(scores.items(), key=lambda x: x[1])[0]
+    if best_layout == "section" and not title_text and divider_band is not None:
+        title_text = divider_band.text
 
     return {
         "layout": best_layout,
