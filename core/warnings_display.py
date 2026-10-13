@@ -118,10 +118,36 @@ def format_warning(w: dict) -> dict:
             "(SVG·파트너 덱에서 자주 발생)",
         ),
         "TEXT_NOT_EXTRACTED": ("warn", ""),
+        "BRAND_PACK": ("info", "아카데미 브랜드 팩(로고·테마 색)을 적용했습니다."),
+        "BRAND_PACK_MISSING": (
+            "info",
+            "브랜드 팩을 찾지 못해 기본 테마 색으로 변환했습니다.",
+        ),
+        "CANVAS_RESCALED": (
+            "info",
+            "원본과 아카데미 슬라이드 크기가 달라 본문 도형을 크기에 맞춰 조정했습니다.",
+        ),
+        "LAYOUT_PATTERN": ("info", "아카데미 카드 패턴을 적용했습니다."),
+        "SOURCE_PLACEHOLDER_IMAGE": (
+            "warn",
+            "원본에 크기만 잡힌 자리표시 이미지가 있습니다. Google 슬라이드에서 미디어를 "
+            "포함해 다시 내보내면 그림이 복원됩니다.",
+        ),
     }
 
     level = "info"
     body = _sanitize_technical_message(str(w.get("message") or ""), code)
+
+    if code == "BRAND_ICONS_REPLACED":
+        n = int(w.get("count") or 0)
+        return {
+            "code": code,
+            "level": "info",
+            "slide": slide_n,
+            "message": f"아이콘 {n}개를 아카데미 브랜드 아이콘으로 바꿨습니다."
+            if n
+            else "아이콘을 아카데미 브랜드 아이콘으로 바꿨습니다.",
+        }
 
     if code == "HEADER_TEXT_DROPPED":
         text = str(w.get("text") or "").strip()

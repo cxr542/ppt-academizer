@@ -1833,6 +1833,7 @@ def _migrate_cmp_deck_body(
                 {
                     "code": "BRAND_ICONS_REPLACED",
                     "level": "info",
+                    "count": len(icon_hits),
                     "message": (
                         f"Replaced {len(icon_hits)} icon(s) with academy brand pack: "
                         + ", ".join(sorted(set(icon_hits))[:12])
