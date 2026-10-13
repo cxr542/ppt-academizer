@@ -21,6 +21,7 @@ def test_migrate_cmp_retries_without_ooxml_repair_on_import_error(
         output_path: Path,
         *,
         skip_ooxml_repair: bool,
+        editable_body: bool | None = None,
     ) -> tuple[Path, list[dict], int]:
         calls.append(skip_ooxml_repair)
         if not skip_ooxml_repair:
@@ -76,3 +77,27 @@ def test_validator_runs_when_given_that_environment(tmp_path: Path) -> None:
         env=validator_subprocess_env(),
     )
     assert "ModuleNotFoundError" not in (proc.stderr + proc.stdout), proc.stderr[-400:]
+
+
+def test_editable_body_option_is_passed_to_the_migrate_step(monkeypatch, tmp_path: Path) -> None:
+    import scripts.academy_deck_build_lib as deck_lib
+    import scripts.build_cmp_academy as cmp_builder
+
+    seen: list[object] = []
+    source = tmp_path / "source.pptx"
+    source.write_bytes(b"source")
+
+    def fake_migrate_cmp_deck(source_path, output_path, *, skip_ooxml_repair, editable_body=None):
+        seen.append(editable_body)
+        output_path.write_bytes(source_path.read_bytes())
+        return output_path, [{"code": "MIGRATE_META", "deck_kind": "cmp", "editable_body": bool(editable_body)}], 3
+
+    monkeypatch.setattr(cmp_builder, "migrate_cmp_deck", fake_migrate_cmp_deck)
+    monkeypatch.setattr(deck_lib, "finalize_academy_package", lambda _output: 0)
+    monkeypatch.setattr(pipeline, "maybe_mac_powerpoint_repair", lambda _output: [])
+
+    _out, _warn, _n, meta = pipeline._academize_migrate_cmp(source, tmp=tmp_path, editable_body=True)
+    assert seen == [True] and meta["editable_body"] is True
+
+    _out, _warn, _n, meta = pipeline._academize_migrate_cmp(source, tmp=tmp_path)
+    assert seen == [True, None] and meta["editable_body"] is False  # default: off
