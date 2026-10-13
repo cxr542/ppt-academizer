@@ -212,6 +212,11 @@ def is_body_shape(shape, title: str | None, governing: str | None) -> bool:
 
     # Thin vertical accent rules (AUTO_SHAPE or solid TEXT_BOX chrome).
     if st in (MSO_SHAPE_TYPE.AUTO_SHAPE, MSO_SHAPE_TYPE.TEXT_BOX) and w < 250_000 and h > 200_000:
+        # A bar that sits in the header band accents the *source* slide title, which the academy
+        # layout replaces with its own header; copied over, it is orphaned and lands on the
+        # governing-message placeholder. Bars further down (card/section accents) are kept.
+        if top + h // 2 < HEADER_BOTTOM_EMU:
+            return False
         if st == MSO_SHAPE_TYPE.AUTO_SHAPE:
             return True
         try:

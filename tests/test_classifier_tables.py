@@ -197,3 +197,34 @@ def test_header_title_slide_is_not_a_section() -> None:
     prs = Presentation()
     result = analyze_slide_layout(_divider(prs, "시장 환경", title_top=0.6))
     assert result["layout"] != "section"
+
+
+def test_slide_without_text_blocks_can_be_analyzed_directly() -> None:
+    """analyze_slide_layout must not depend on callers short-circuiting empty slides."""
+    prs = Presentation()
+    empty = prs.slides.add_slide(prs.slide_layouts[6])
+    result = analyze_slide_layout(empty)
+    assert result["layout"] == "empty"
+    assert result["scores"]["section"] == 0.0
+
+
+def _bar_slide(top_in):
+    from pptx.enum.shapes import MSO_SHAPE
+
+    prs = Presentation()
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    bar = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(0.62), Inches(top_in), Inches(0.08), Inches(0.67))
+    return bar
+
+
+def test_title_accent_bar_in_the_header_band_is_not_migrated() -> None:
+    """The source's gold bar beside its title landed on the governing-message placeholder."""
+    from scripts.shape_migrate_lib import is_body_shape
+
+    assert not is_body_shape(_bar_slide(0.62), "제목", None)
+
+
+def test_accent_bar_below_the_header_band_is_still_migrated() -> None:
+    from scripts.shape_migrate_lib import is_body_shape
+
+    assert is_body_shape(_bar_slide(3.0), "제목", None)
