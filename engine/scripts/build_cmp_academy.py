@@ -1908,6 +1908,9 @@ def _migrate_cmp_deck_body(
                     apply_academy_body_shape_typography(slide)
         if not radial and not canvas_rescaled and not preserve_body_style:
             bac.fit_body_shapes(slide, sw, sh)
+        if not canvas_rescaled:
+            # ``sh`` is rebound to a placeholder by the loops above; use the deck's own height.
+            bac.fit_header_overlapping_pictures(slide, int(prs.slide_width), int(prs.slide_height))
         if slide.slide_layout.name == LAYOUT_CONTENT and not skip_relayout:
             relayout_content_columns(slide, sw)
             t = ""
