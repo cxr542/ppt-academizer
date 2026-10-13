@@ -75,6 +75,14 @@ _BUILTIN_KINDS: dict[str, dict[str, Any]] = {
 # Shape names (Google exports) that are never body content. Extend via JSON.
 _BUILTIN_SKIP_SHAPE_NAMES = frozenset({"Google Shape;520;p15"})
 
+# Titles that mark the last slide as a closing ("thank you") slide. Extend/replace via the JSON
+# key ``closing_slide_patterns`` (list of regexes, case-insensitive); ``[]`` turns the rule off.
+_BUILTIN_CLOSING_PATTERNS = (
+    r"감사합니다|감사드립니다|고맙습니다",
+    r"thank\s*you|thanks\s+for",
+    r"^\s*q\s*&\s*a\s*$",
+)
+
 _APP_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -123,6 +131,18 @@ def skip_shape_names() -> frozenset[str]:
     if isinstance(extra, list):
         return _BUILTIN_SKIP_SHAPE_NAMES | frozenset(str(x) for x in extra)
     return _BUILTIN_SKIP_SHAPE_NAMES
+
+
+def closing_slide_patterns() -> tuple[re.Pattern[str], ...]:
+    configured = _overrides().get("closing_slide_patterns")
+    raw = configured if isinstance(configured, list) else _BUILTIN_CLOSING_PATTERNS
+    compiled: list[re.Pattern[str]] = []
+    for pattern in raw:
+        try:
+            compiled.append(re.compile(str(pattern), re.I))
+        except re.error:
+            continue
+    return tuple(compiled)
 
 
 def detect_deck_kind(filename: str) -> DeckKind:
