@@ -555,6 +555,42 @@ def is_stock_placeholder_picture(shape) -> bool:
     return False
 
 
+# Placeholder generators fill the box with a flat light gray (#DDD) and print "600 × 400" on it.
+# Such a picture is kept (it may be intentional) but reported, so the author can swap in the real
+# image. Dropping it would silently remove content, so unlike a stub it is never removed.
+_LOOKALIKE_MIN_SIDE = 300
+_LOOKALIKE_MAX_BYTES = 40_000
+_LOOKALIKE_MIN_DOMINANT_SHARE = 0.6
+
+
+def looks_like_placeholder_picture(shape) -> bool:
+    """A small file dominated by one neutral light gray: a stock "WxH" placeholder image."""
+    if shape.shape_type != MSO_SHAPE_TYPE.PICTURE:
+        return False
+    if is_stock_placeholder_picture(shape) or is_decorative_shadow_picture(shape):
+        return False  # already handled (dropped) elsewhere
+    raw = _open_picture(shape)
+    if raw is None:
+        return False
+    try:
+        blob_len = len(shape.image.blob)
+        im = raw.convert("RGBA")
+    except Exception:
+        return False
+    w, h = im.size
+    if w < _LOOKALIKE_MIN_SIDE or h < _LOOKALIKE_MIN_SIDE or blob_len >= _LOOKALIKE_MAX_BYTES:
+        return False
+    visible = [px for px in im.resize((48, 48)).getdata() if px[3] > 200]
+    if not visible:
+        return False
+    from collections import Counter
+
+    (r, g, b), count = Counter((px[0] // 8, px[1] // 8, px[2] // 8) for px in visible).most_common(1)[0]
+    dominant = (r * 8 + 4, g * 8 + 4, b * 8 + 4)
+    neutral_light = max(dominant) - min(dominant) <= 12 and 170 <= dominant[0] <= 240
+    return neutral_light and count / len(visible) >= _LOOKALIKE_MIN_DOMINANT_SHARE
+
+
 def should_drop_body_picture(
     shape,
     slide_width: int,
@@ -1833,6 +1869,23 @@ def _migrate_cmp_deck_body(
                         ),
                         "src_index": src_idx,
                         **dropped,
+                    }
+                )
+            lookalike_n = sum(
+                1
+                for sh_ in src_slide.shapes
+                if sh_.shape_type == MSO_SHAPE_TYPE.PICTURE and looks_like_placeholder_picture(sh_)
+            )
+            if lookalike_n:
+                warnings.append(
+                    {
+                        "code": "PLACEHOLDER_LOOKALIKE",
+                        "message": (
+                            f"Source slide {src_idx + 1}: {lookalike_n} picture(s) look like "
+                            "gray placeholder images; kept as-is"
+                        ),
+                        "src_index": src_idx,
+                        "count": lookalike_n,
                     }
                 )
             if placeholder_n:

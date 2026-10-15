@@ -146,6 +146,18 @@ def format_warning(w: dict) -> dict:
             "Google 슬라이드 내보내기에서 이미지가 빠진 경우라면 미디어를 포함해 다시 내보내 보세요.",
         }
 
+    if code == "PLACEHOLDER_LOOKALIKE":
+        n = int(w.get("count") or 0)
+        count = f"{n}개" if n else "일부"
+        return {
+            "code": code,
+            "level": "warn",
+            "slide": slide_n,
+            "message": prefix
+            + f"회색 임시 그림(\"600×400\" 같은 자리표시)처럼 보이는 이미지가 {count} 있어 그대로 두었습니다. "
+            "실제 사진으로 바꿔야 하는 칸일 수 있으니 확인해 주세요.",
+        }
+
     if code == "BRAND_ICONS_REPLACED":
         n = int(w.get("count") or 0)
         return {
