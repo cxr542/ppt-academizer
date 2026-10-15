@@ -2,6 +2,12 @@
 
 형식: [Keep a Changelog](https://keepachangelog.com/). 상세는 [releases/](releases/) 참고.
 
+## [1.7.17] - 2026-10-15
+
+Fix: **서버 오류 시 파이썬 트레이스백이 사용자 화면에 그대로 나가던 문제.** 예상 밖 오류(500)에 `traceback.format_exc()` 전문(서버 경로·라이브러리 내부)이 응답에 실려 TMS 화면에 표시됐습니다. 이제 응답은 "처리 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요. (오류 코드: xxxxxxxx)"뿐이고, 트레이스백은 같은 코드와 함께 서버 로그에만 남습니다. 로컬 디버깅용으로 `PPT_ACADEMIZER_DEBUG_ERRORS=1`이면 응답에도 포함합니다.  
+Fix: 파일을 찾지 못했을 때(`FileNotFoundError`) 서버 경로가 메시지에 그대로 나가던 문제(템플릿 경로 포함). 사용자에게는 할 일만 알리고 경로는 로그에만 남깁니다.  
+Change: 손상되었거나 .pptx가 아닌 파일(`BadZipFile`·`PackageNotFoundError`)이 500이 아니라 **400과 안내 문구**("PowerPoint에서 열어 다시 저장한 뒤 올려 주세요")로 응답됩니다.  
+
 ## [1.7.16] - 2026-10-14
 
 Fix: **큰 덱을 올리면 서버가 메모리 초과(OOM)로 죽던 문제.** Render 무료 인스턴스(512MB)에서 CONTRABASS 덱(34MB, 28장)을 올리면 "Ran out of memory (used over 512MB)"로 인스턴스가 재시작되어 브라우저에는 `Failed to fetch`·502가 나왔습니다. 원인은 둘이었습니다.  
