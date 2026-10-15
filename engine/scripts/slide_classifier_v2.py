@@ -65,6 +65,17 @@ class TextBand:
         self.is_bold = any(b.get("is_bold") for b in blocks)
         self.is_placeholder = any(b.get("is_placeholder") for b in blocks)
 
+def _is_stacked(band: TextBand) -> bool:
+    """True when the blocks of a band read as one message (a single box, or boxes stacked on
+    top of each other). Boxes side by side are separate columns/labels, not a governing line."""
+    if len(band.blocks) < 2:
+        return True
+    a, b = band.blocks[0], band.blocks[1]
+    overlap = min(a["left"] + a["width"], b["left"] + b["width"]) - max(a["left"], b["left"])
+    narrower = min(a["width"], b["width"])
+    return narrower > 0 and overlap >= 0.5 * narrower
+
+
 def cluster_bands(blocks: list[dict], y_threshold: float = 0.15) -> list[TextBand]:
     """Group blocks by vertical proximity (Y-threshold in inches)."""
     if not blocks:
@@ -113,7 +124,7 @@ def analyze_slide_layout(slide) -> dict[str, Any]:
             remaining = [b for b in bands if b != title_band and b.top >= title_band.top]
             if remaining:
                 candidate = remaining[0]
-                if candidate.top < 3.0 and len(candidate.blocks) <= 2:
+                if candidate.top < 3.0 and len(candidate.blocks) <= 2 and _is_stacked(candidate):
                     governing_band = candidate
                     remaining = remaining[1:]
             

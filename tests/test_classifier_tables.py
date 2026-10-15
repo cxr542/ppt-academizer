@@ -228,3 +228,56 @@ def test_accent_bar_below_the_header_band_is_still_migrated() -> None:
     from scripts.shape_migrate_lib import is_body_shape
 
     assert is_body_shape(_bar_slide(3.0), "제목", None)
+
+
+def _slide_with_boxes(prs, boxes):
+    """boxes: (text, left_in, top_in, width_in, pt)"""
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    for text, left, top, width, pt in boxes:
+        box = slide.shapes.add_textbox(Inches(left), Inches(top), Inches(width), Inches(0.5))
+        box.text_frame.text = text
+        box.text_frame.paragraphs[0].runs[0].font.size = Pt(pt)
+    return slide
+
+
+def test_side_by_side_year_headings_are_not_a_governing_message() -> None:
+    """Real deck (VMware slide 10): two timeline headings in one row were merged into the
+    governing line and pulled out of the timeline."""
+    prs = Presentation()
+    slide = _slide_with_boxes(
+        prs,
+        [
+            ("오케스트로의 성과 궤적 및 로드맵", 0.8, 0.6, 11.8, 33),
+            ("2023 - 가속기", 3.7, 2.4, 2.8, 18),
+            ("2026 - 글로벌 AI", 10.0, 2.4, 2.8, 18),
+        ],
+    )
+    result = analyze_slide_layout(slide)
+    assert result["governing"] is None
+    assert result["title"] == "오케스트로의 성과 궤적 및 로드맵"
+
+
+def test_a_single_line_under_the_title_is_still_the_governing_message() -> None:
+    prs = Presentation()
+    slide = _slide_with_boxes(
+        prs,
+        [
+            ("무중단 서비스 전환", 0.8, 0.6, 11.8, 33),
+            ("연속 데이터 보호(CDP) 기반으로 서비스 중단 없이 이전합니다", 0.8, 1.6, 8.0, 14),
+        ],
+    )
+    assert analyze_slide_layout(slide)["governing"] == "연속 데이터 보호(CDP) 기반으로 서비스 중단 없이 이전합니다"
+
+
+def test_two_stacked_lines_under_the_title_are_still_one_governing_message() -> None:
+    prs = Presentation()
+    slide = _slide_with_boxes(
+        prs,
+        [
+            ("무중단 서비스 전환", 0.8, 0.6, 11.8, 33),
+            ("연속 데이터 보호 기반", 0.8, 1.5, 8.0, 14),
+            ("서비스 중단 없는 이전", 0.9, 1.9, 7.5, 14),
+        ],
+    )
+    gov = analyze_slide_layout(slide)["governing"]
+    assert gov and "연속 데이터 보호 기반" in gov and "서비스 중단 없는 이전" in gov
