@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import gc
 import sys
 from pathlib import Path
 from typing import Any
@@ -116,11 +117,12 @@ def _preview_spec(source: Path, *, title: str, deck_subtitle: str) -> dict[str, 
     }
 
 
-def _preview_migrate(source: Path) -> dict[str, Any]:
+def _preview_migrate(source: Path, prs: Presentation | None = None) -> dict[str, Any]:
     from scripts.build_cmp_academy import build_slide_plan, classify_slide
 
     cfg = migrate_config_for_source(source)
-    prs = Presentation(str(source))
+    if prs is None:
+        prs = Presentation(str(source))
     plan = build_slide_plan(prs, cfg)
     plan_len = len(plan)
 
@@ -184,8 +186,12 @@ def build_wizard_preview(
         recommended = detected
 
     structure_bullets = _structure_bullets(st)
+    # Reuse the already-open deck for the migrate preview, then release it before the spec preview
+    # opens its own copy: three simultaneous copies of a 30MB deck exceeded a 512MB instance.
+    migrate_preview = _preview_migrate(source, prs)
+    del prs
+    gc.collect()
     spec_preview = _preview_spec(source, title=title, deck_subtitle=deck_subtitle)
-    migrate_preview = _preview_migrate(source)
 
     cards: list[dict[str, Any]] = []
     for meta in PROFILE_CARDS:

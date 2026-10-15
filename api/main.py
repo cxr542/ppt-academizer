@@ -22,10 +22,10 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from api.errors import internal_server_error  # noqa: E402
+from api.isolation import ConversionWorkerDied, run_isolated  # noqa: E402
 from api.upload_handlers import (  # noqa: E402
-    read_upload_bounded,
     remove_upload_tmp,
-    write_upload_tmp,
+    save_upload_bounded,
 )
 from core.ppt_test_path import ensure_engine_on_path  # noqa: E402
 from core.slide_limits import standard_max_slides  # noqa: E402
@@ -73,7 +73,18 @@ T = TypeVar("T")
 
 
 async def _run_blocking(fn: Callable[..., T], /, *args, **kwargs) -> T:
-    return await asyncio.to_thread(fn, *args, **kwargs)
+    """Run a conversion step in an isolated worker process (see ``api.isolation``)."""
+    try:
+        return await run_isolated(fn, *args, **kwargs)
+    except ConversionWorkerDied as exc:
+        logging.getLogger("ppt-academizer.api").error("conversion worker died: %s", exc)
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "변환 중 서버 메모리가 부족해 작업이 중단되었습니다. 파일이 매우 큰 경우 "
+                "슬라이드를 나눠서 올려 주세요."
+            ),
+        ) from exc
 
 
 def _schedule_tmp_cleanup(background_tasks: BackgroundTasks, tmp: Path) -> None:
@@ -175,8 +186,7 @@ async def wizard_preview(
     tmp: Path | None = None
     scheduled_cleanup = False
     try:
-        content, filename = await read_upload_bounded(file)
-        tmp, src = write_upload_tmp(content, filename)
+        tmp, src = await save_upload_bounded(file)
         from core.wizard_preview import build_wizard_preview
 
         title = deck_title.strip() or None
@@ -211,8 +221,7 @@ async def analyze(
     tmp: Path | None = None
     scheduled_cleanup = False
     try:
-        content, filename = await read_upload_bounded(file)
-        tmp, src = write_upload_tmp(content, filename)
+        tmp, src = await save_upload_bounded(file)
         from core.analyze import analyze_presentation
 
         title = deck_title.strip() or None
@@ -253,8 +262,7 @@ async def academize(
     tmp: Path | None = None
     scheduled_cleanup = False
     try:
-        content, filename = await read_upload_bounded(file)
-        tmp, src = write_upload_tmp(content, filename)
+        tmp, src = await save_upload_bounded(file)
         from core.pipeline import academize_pptx
 
         title = deck_title.strip() or None

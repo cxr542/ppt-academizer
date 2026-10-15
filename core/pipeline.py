@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import gc
 import json
 import shutil
 import sys
@@ -260,6 +261,10 @@ def academize_pptx(
         source_slides=source_slides,
         estimated_output=estimated_output_slides,
     )
+    # The deck was only needed for routing; the converters reopen the file themselves. Holding
+    # this copy through the conversion doubled the peak memory on large decks.
+    del prs
+    gc.collect()
 
     if route == "migrate_cmp":
         return _academize_migrate_cmp(source, tmp=tmp, quality_mode=mode)
