@@ -21,7 +21,12 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from api.errors import internal_server_error  # noqa: E402
+from api.errors import (  # noqa: E402
+    UNREADABLE_PPTX_ERRORS,
+    internal_server_error,
+    missing_resource_error,
+    unreadable_pptx_error,
+)
 from api.isolation import ConversionWorkerDied, run_isolated  # noqa: E402
 from api.upload_handlers import (  # noqa: E402
     remove_upload_tmp,
@@ -198,11 +203,15 @@ async def wizard_preview(
         scheduled_cleanup = True
         return JSONResponse(payload)
     except FileNotFoundError as e:
-        raise HTTPException(status_code=400, detail=str(e)) from e
+        raise missing_resource_error(
+            e, "변환에 필요한 파일을 찾지 못했습니다. 파일을 다시 올려 주세요."
+        ) from e
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     except HTTPException:
         raise
+    except UNREADABLE_PPTX_ERRORS as e:
+        raise unreadable_pptx_error(e) from e
     except Exception as e:
         raise internal_server_error(e) from e
     finally:
@@ -237,11 +246,15 @@ async def analyze(
         scheduled_cleanup = True
         return JSONResponse(payload)
     except FileNotFoundError as e:
-        raise HTTPException(status_code=400, detail=str(e)) from e
+        raise missing_resource_error(
+            e, "변환에 필요한 파일을 찾지 못했습니다. 파일을 다시 올려 주세요."
+        ) from e
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     except HTTPException:
         raise
+    except UNREADABLE_PPTX_ERRORS as e:
+        raise unreadable_pptx_error(e) from e
     except Exception as e:
         raise internal_server_error(e) from e
     finally:
@@ -291,14 +304,17 @@ async def academize(
             work_tmp=tmp,
         )
     except FileNotFoundError as e:
-        raise HTTPException(
+        raise missing_resource_error(
+            e,
+            "서버에서 아카데미 템플릿을 찾을 수 없습니다. 관리자에게 문의해 주세요.",
             status_code=503,
-            detail=f"아카데미 템플릿을 찾을 수 없습니다. TEMPLATE_PPTX를 설정하세요. ({e})",
         ) from e
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     except HTTPException:
         raise
+    except UNREADABLE_PPTX_ERRORS as e:
+        raise unreadable_pptx_error(e) from e
     except Exception as e:
         raise internal_server_error(e) from e
     finally:
