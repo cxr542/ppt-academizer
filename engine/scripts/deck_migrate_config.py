@@ -83,6 +83,11 @@ _BUILTIN_CLOSING_PATTERNS = (
     r"^\s*q\s*&\s*a\s*$",
 )
 
+# The template's 간지/목차 layouts print the author's example course name in a fixed text box. A
+# converted deck is about another course, so that text is replaced with the deck's own title.
+# Override with the JSON key ``template_course_name_text``; an empty string leaves the layouts as is.
+_BUILTIN_TEMPLATE_COURSE_NAME = "Introduction to CLOUD COMPUTING"
+
 _APP_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -131,6 +136,11 @@ def skip_shape_names() -> frozenset[str]:
     if isinstance(extra, list):
         return _BUILTIN_SKIP_SHAPE_NAMES | frozenset(str(x) for x in extra)
     return _BUILTIN_SKIP_SHAPE_NAMES
+
+
+def template_course_name_text() -> str:
+    configured = _overrides().get("template_course_name_text")
+    return configured.strip() if isinstance(configured, str) else _BUILTIN_TEMPLATE_COURSE_NAME
 
 
 def closing_slide_patterns() -> tuple[re.Pattern[str], ...]:

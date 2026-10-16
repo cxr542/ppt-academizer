@@ -40,6 +40,7 @@ from scripts.deck_migrate_config import (  # noqa: E402
     closing_slide_patterns,
     config_for_kind,
     migrate_config_for_source,
+    template_course_name_text,
 )
 from scripts.pptx_ingest import iter_shapes, iter_shapes_abs, slide_notes_text  # noqa: E402
 from scripts.llm_classifier import analyze_slide_with_llm  # noqa: E402
@@ -1398,6 +1399,39 @@ def fill_toc_from_source(slide, src_slide) -> None:
     fill_toc(slide, entries)
 
 
+COURSE_NAME_LAYOUTS = (LAYOUT_TOC, LAYOUT_SECTION)
+
+
+def fit_course_name_pt(name: str) -> int:
+    """Font size so the one-line course name stays on the slide (template uses 24pt)."""
+    return 24 if len(name) <= 30 else 18 if len(name) <= 40 else 14
+
+
+def apply_course_name_to_layouts(prs, course_name: str | None) -> int:
+    """Replace the template's example course name on the 목차/간지 layouts. Returns boxes changed."""
+    example = template_course_name_text()
+    name = " ".join((course_name or "").split())
+    if not example or not name:
+        return 0
+    changed = 0
+    for layout in prs.slide_layouts:
+        if layout.name not in COURSE_NAME_LAYOUTS:
+            continue
+        for shape in layout.shapes:
+            if not getattr(shape, "has_text_frame", False) or shape.is_placeholder:
+                continue
+            if shape.text_frame.text.strip() != example:
+                continue
+            runs = [r for p in shape.text_frame.paragraphs for r in p.runs]
+            runs[0].text = name
+            for extra in runs[1:]:
+                extra.text = ""
+            for run in runs[:1]:
+                run.font.size = Pt(fit_course_name_pt(name))
+            changed += 1
+    return changed
+
+
 def section_dropped_texts(src_slide, title: str | None) -> list[str]:
     """Text on a divider other than its title: the 간지 layout has no slot for it."""
     kept = _normalize_header_line(title) if title else ""
@@ -1735,6 +1769,9 @@ def _migrate_cmp_deck_body(
     for name in (LAYOUT_COVER, LAYOUT_TOC, LAYOUT_SECTION, LAYOUT_CONTENT):
         if name not in seeds:
             raise ValueError(f"Template missing starter slide for layout {name!r}")
+    apply_course_name_to_layouts(
+        prs, cfg.cover_subtitle or extract_header(src.slides[0], "cover")[0]
+    )
 
     initial_part_ids = {id(s.part) for s in prs.slides}
 
