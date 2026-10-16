@@ -40,6 +40,7 @@ from scripts.deck_migrate_config import (  # noqa: E402
     closing_slide_patterns,
     config_for_kind,
     footer_copyright_year,
+    layouts_without_footer,
     migrate_config_for_source,
     template_course_name_text,
 )
@@ -1453,6 +1454,39 @@ def _is_footer_picture(shape, slide_width: int, slide_height: int) -> bool:
     )
 
 
+def remove_footers_from_layouts(prs) -> int:
+    """Delete the copyright footer from layouts the 2026 template leaves without one (목차).
+
+    Older templates still draw it there (as a picture or text); the conversion follows the
+    current template. Returns the number of footers removed.
+    """
+    names = set(layouts_without_footer())
+    if not names:
+        return 0
+    sw, sh_ = int(prs.slide_width), int(prs.slide_height)
+    removed = 0
+    for layout in prs.slide_layouts:
+        if layout.name not in names:
+            continue
+        for shape in list(layout.shapes):
+            is_text_footer = (
+                getattr(shape, "has_text_frame", False)
+                and not shape.is_placeholder
+                and _FOOTER_YEAR_RE.search(shape.text_frame.text)
+            )
+            if not (is_text_footer or _is_footer_picture(shape, sw, sh_)):
+                continue
+            rel_ids = shape._element.xpath(".//a:blip/@r:embed")
+            shape._element.getparent().remove(shape._element)
+            for rel_id in rel_ids:
+                try:
+                    layout.part.drop_rel(rel_id)
+                except Exception:
+                    pass
+            removed += 1
+    return removed
+
+
 def apply_current_year_to_footers(prs, year: int | None = None) -> int:
     """Put the conversion year in every layout footer. Returns the number of footers changed."""
     from lxml import etree
@@ -1870,6 +1904,7 @@ def _migrate_cmp_deck_body(
     apply_course_name_to_layouts(
         prs, cfg.cover_subtitle or extract_header(src.slides[0], "cover")[0]
     )
+    remove_footers_from_layouts(prs)
     apply_current_year_to_footers(prs)
 
     initial_part_ids = {id(s.part) for s in prs.slides}

@@ -143,6 +143,21 @@ def template_course_name_text() -> str:
     return configured.strip() if isinstance(configured, str) else _BUILTIN_TEMPLATE_COURSE_NAME
 
 
+_BUILTIN_LAYOUTS_WITHOUT_FOOTER = ("목차",)
+
+
+def layouts_without_footer() -> tuple[str, ...]:
+    """Layouts that carry no copyright footer in the current (2026) template.
+
+    JSON key ``layouts_without_footer`` (list of layout names) replaces the default; ``[]`` keeps
+    every footer the template has.
+    """
+    configured = _overrides().get("layouts_without_footer")
+    if isinstance(configured, list):
+        return tuple(str(name) for name in configured)
+    return _BUILTIN_LAYOUTS_WITHOUT_FOOTER
+
+
 def footer_copyright_year(today_year: int | None = None) -> int | None:
     """Year printed in the layout footer ("© 2026. OKESTRO …").
 
