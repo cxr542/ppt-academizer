@@ -143,6 +143,26 @@ def template_course_name_text() -> str:
     return configured.strip() if isinstance(configured, str) else _BUILTIN_TEMPLATE_COURSE_NAME
 
 
+def footer_copyright_year(today_year: int | None = None) -> int | None:
+    """Year printed in the layout footer ("© 2026. OKESTRO …").
+
+    JSON key ``footer_copyright_year``: ``"auto"`` (default) = the year of the conversion; an
+    integer pins a year; ``null`` or ``""`` leaves the template's footer untouched.
+    """
+    import datetime
+
+    configured = _overrides().get("footer_copyright_year", "auto")
+    if configured is None or configured == "":
+        return None
+    if isinstance(configured, bool):
+        return today_year or datetime.date.today().year
+    if isinstance(configured, int):
+        return configured
+    if isinstance(configured, str) and configured.strip().isdigit():
+        return int(configured.strip())
+    return today_year or datetime.date.today().year
+
+
 def closing_slide_patterns() -> tuple[re.Pattern[str], ...]:
     configured = _overrides().get("closing_slide_patterns")
     raw = configured if isinstance(configured, list) else _BUILTIN_CLOSING_PATTERNS

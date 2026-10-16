@@ -1,6 +1,7 @@
 {
   "_comment": "Copy to config/deck_kinds.json (or set PPT_ACADEMIZER_DECK_KINDS=/path/file.json). Kinds listed here are matched BEFORE the built-ins; a kind with a built-in name overrides only the fields you give.",
   "global_skip_shape_names": [],
+  "footer_copyright_year": "auto",
   "template_course_name_text": "Introduction to CLOUD COMPUTING",
   "closing_slide_patterns": ["감사합니다|감사드립니다|고맙습니다", "thank\\s*you|thanks\\s+for", "^\\s*q\\s*&\\s*a\\s*$"],
   "kinds": {

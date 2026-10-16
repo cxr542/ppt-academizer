@@ -39,6 +39,7 @@ from scripts.deck_migrate_config import (  # noqa: E402
     DeckMigrateConfig,
     closing_slide_patterns,
     config_for_kind,
+    footer_copyright_year,
     migrate_config_for_source,
     template_course_name_text,
 )
@@ -1401,6 +1402,103 @@ def fill_toc_from_source(slide, src_slide) -> None:
 
 COURSE_NAME_LAYOUTS = (LAYOUT_TOC, LAYOUT_SECTION)
 
+# Footer copyright line. Older templates carry it as a picture (a 1460x60 PNG), newer ones as a
+# text box ("ⓒ 2026. OKESTRO …"); either way the year must be the year of the conversion.
+_FOOTER_TEXT = "© {year}. OKESTRO Co., Ltd. All Rights Reserved."
+_FOOTER_YEAR_RE = re.compile(r"((?:©|ⓒ)\s*)(\d{4})(\.\s*OKESTRO)")
+_FOOTER_MIN_ASPECT = 15  # a wide, thin strip (the template's is ~24:1)
+
+
+def _footer_color_and_alpha(shape) -> tuple[str, int]:
+    """Dominant visible colour of the footer picture (hex) and its opacity in percent."""
+    try:
+        import io
+        from collections import Counter
+
+        from PIL import Image
+
+        im = Image.open(io.BytesIO(shape.image.blob)).convert("RGBA")
+        pixels = [p for p in im.resize((64, 16)).getdata() if p[3] > 60]
+        if pixels:
+            r, g, b_, a = Counter(pixels).most_common(1)[0][0]
+            return f"{r:02X}{g:02X}{b_:02X}", max(10, min(100, round(a / 255 * 100)))
+    except Exception:
+        pass
+    return "C9C9D0", 45
+
+
+def _footer_textbox_xml(shape_id: int, shape, text: str, color: str, alpha_pct: int, pt: float) -> str:
+    return (
+        '<p:sp xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" '
+        'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">'
+        f'<p:nvSpPr><p:cNvPr id="{shape_id}" name="Footer Copyright"/><p:cNvSpPr txBox="1"/><p:nvPr userDrawn="1"/></p:nvSpPr>'
+        f'<p:spPr><a:xfrm><a:off x="{int(shape.left)}" y="{int(shape.top)}"/>'
+        f'<a:ext cx="{int(shape.width)}" cy="{int(shape.height)}"/></a:xfrm>'
+        '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:noFill/></p:spPr>'
+        '<p:txBody><a:bodyPr wrap="none" lIns="0" tIns="0" rIns="0" bIns="0" anchor="ctr"><a:noAutofit/></a:bodyPr><a:lstStyle/>'
+        f'<a:p><a:pPr algn="r"/><a:r><a:rPr lang="en-US" sz="{int(pt * 100)}" b="0"><a:solidFill>'
+        f'<a:srgbClr val="{color}"><a:alpha val="{alpha_pct * 1000}"/></a:srgbClr></a:solidFill></a:rPr>'
+        f'<a:t>{text}</a:t></a:r></a:p></p:txBody></p:sp>'
+    )
+
+
+def _is_footer_picture(shape, slide_width: int, slide_height: int) -> bool:
+    if shape.shape_type != MSO_SHAPE_TYPE.PICTURE or not shape.height:
+        return False
+    return (
+        int(shape.top) >= slide_height * 0.9
+        and int(shape.left) >= slide_width * 0.55
+        and int(shape.width) / int(shape.height) >= _FOOTER_MIN_ASPECT
+        and Inches(2.5) <= int(shape.width) <= Inches(4.5)
+    )
+
+
+def apply_current_year_to_footers(prs, year: int | None = None) -> int:
+    """Put the conversion year in every layout footer. Returns the number of footers changed."""
+    from lxml import etree
+
+    year = year if year is not None else footer_copyright_year()
+    if year is None:
+        return 0
+    sw, sh_ = int(prs.slide_width), int(prs.slide_height)
+    changed = 0
+    for layout in prs.slide_layouts:
+        for shape in list(layout.shapes):
+            if getattr(shape, "has_text_frame", False) and not shape.is_placeholder:
+                text = shape.text_frame.text
+                match = _FOOTER_YEAR_RE.search(text)
+                if match and match.group(2) != str(year):
+                    runs = [r for p in shape.text_frame.paragraphs for r in p.runs]
+                    joined = "".join(r.text for r in runs)
+                    runs[0].text = _FOOTER_YEAR_RE.sub(lambda m: f"{m.group(1)}{year}{m.group(3)}", joined)
+                    for extra in runs[1:]:
+                        extra.text = ""
+                    changed += 1
+            elif _is_footer_picture(shape, sw, sh_):
+                color, alpha = _footer_color_and_alpha(shape)
+                # ~ the picture's text height: the strip is ~0.13-0.16in tall for ~46 characters
+                pt = max(7.0, min(12.0, int(shape.width) / Inches(1) * 72 / 21.5))
+                sp = etree.fromstring(
+                    _footer_textbox_xml(
+                        max(int(s.shape_id) for s in layout.shapes) + 1,
+                        shape,
+                        _FOOTER_TEXT.format(year=year),
+                        color,
+                        alpha,
+                        pt,
+                    )
+                )
+                shape._element.addprevious(sp)
+                r_id = shape._element.xpath(".//a:blip/@r:embed")
+                shape._element.getparent().remove(shape._element)
+                for rid in r_id:
+                    try:
+                        layout.part.drop_rel(rid)
+                    except Exception:
+                        pass
+                changed += 1
+    return changed
+
 
 def fit_course_name_pt(name: str) -> int:
     """Font size so the one-line course name stays on the slide (template uses 24pt)."""
@@ -1772,6 +1870,7 @@ def _migrate_cmp_deck_body(
     apply_course_name_to_layouts(
         prs, cfg.cover_subtitle or extract_header(src.slides[0], "cover")[0]
     )
+    apply_current_year_to_footers(prs)
 
     initial_part_ids = {id(s.part) for s in prs.slides}
 
