@@ -4,7 +4,7 @@
 
 PPT **아카데미화** 서비스 (계획: [PLAN.md](PLAN.md) · 독립 실행: [docs/standalone.md](docs/standalone.md)).
 
-**현재 릴리즈:** [1.7.20](CHANGELOG.md) · [CHANGELOG](CHANGELOG.md)
+**현재 릴리즈:** [1.7.21](CHANGELOG.md) · [CHANGELOG](CHANGELOG.md)
 
 ## 웹 UI
 
@@ -84,3 +84,11 @@ export TEMPLATE_PPTX="/path/to/1.아카데미 강의안 템플릿(2026).pptx"
 
 **참고:** Google Slides **보내기 pptx**는 슬라이드 본문이 **배경 PNG**라 텍스트 도형이 없습니다.  
 `pptx_ingest`가 배경 이미지를 추출해 `background_image`로 아카데미 슬라이드에 붙입니다.
+
+## 변환 결과 레이아웃 검사 (개발용)
+
+PowerPoint를 열지 않고도 헤더 침범·제목/거버닝/번호 상자와의 겹침·두 자리 번호 줄바꿈을 찾는 도구입니다. 문제가 있으면 종료 코드 1을 돌려줍니다.
+
+```bash
+python -m core.layout_qa 변환결과.pptx [다른.pptx ...]
+```
