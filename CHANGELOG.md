@@ -2,6 +2,12 @@
 
 형식: [Keep a Changelog](https://keepachangelog.com/). 상세는 [releases/](releases/) 참고.
 
+## [1.8.0] - 2026-10-30
+
+Add: **HTML 문서도 입력으로 받습니다(`.html`·`.htm`).** 업로드된 정적 HTML을 일반 .pptx로 바꾼 뒤(`core/html_to_pptx.py`) 기존 아카데미 변환에 그대로 태우므로 `/wizard/preview`·`/analyze`·`/academize`가 모두 HTML을 받습니다. 슬라이드 나누기: `h1`=표지(앞뒤의 eyebrow·부제 문단 포함), `h3`가 있는 `h2`=간지 + `h3`마다 내용 슬라이드, `h3`가 없는 `h2`=내용 슬라이드, `h4` 이하는 굵은 소제목. 한 슬라이드에 안 들어가면 "제목 (1/2)"처럼 나누고 표는 머리글 행을 반복합니다. 표는 표로, `data:` 그림과 인라인/`data:` SVG는 그림으로(SVG는 `cairosvg`로 PNG 변환, 도구가 없거나 실패하면 건너뜀), 코드블록은 고정폭 상자로, `note`·`callout` 등 강조 박스는 강조 상자로 옮깁니다. `script`·`style`·목차 `nav`·버튼·외부 주소 그림은 가져오지 않습니다(JS로 그려지는 내용은 실행하지 않음). 새 글은 만들지 않고 원문만 재배치합니다.  
+Dependency: `cairosvg`(requirements.txt), Dockerfile에 `libcairo2` 추가.  
+확인: VIOLA HPA(표 11개·SVG 구성도)·VPA(스크린샷 data: 이미지 다수) 시연 가이드 HTML을 변환해 아카데미 변환까지 통과, `core.layout_qa` 0건.  
+
 ## [1.7.23] - 2026-10-16
 
 Change: **목차(`목차`) 레이아웃에서 저작권 푸터를 제거합니다.** 2026 템플릿은 목차 레이아웃에 푸터가 없는데, 서버가 쓰는 이전 템플릿에는 목차에도 푸터가 그림으로 들어 있어 결과 목차 슬라이드에만 푸터가 나왔습니다. 변환 시 푸터가 없어야 하는 레이아웃의 푸터(그림이든 텍스트든)를 지우고, 나머지 레이아웃은 1.7.22대로 연도만 맞춥니다. 지울 레이아웃은 `config/deck_kinds.json`의 `layouts_without_footer`(레이아웃 이름 목록, 기본 `["목차"]`)로 바꾸고, `[]`이면 템플릿의 푸터를 모두 유지합니다. 원본 템플릿 파일은 수정하지 않습니다.  

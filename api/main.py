@@ -159,7 +159,7 @@ def health():
         "max_upload_mb": max_upload_mb(),
         "max_upload_bytes": max_upload_bytes(),
         "standard_max_slides": standard_max_slides(),
-        "supported_upload": [".pptx"],
+        "supported_upload": [".pptx", ".html", ".htm"],
         "skip_pp_repair": __import__("os").environ.get("PPT_ACADEMIZER_SKIP_PP_REPAIR", ""),
     }
 
