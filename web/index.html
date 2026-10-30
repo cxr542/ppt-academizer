@@ -353,11 +353,11 @@
       변환 API에 연결되지 않았습니다. Netlify에서는 <code>PPT_ACADEMIZER_API_URL</code> 환경 변수로 Python API 주소를 지정해야 합니다.
       (<a href="https://github.com/cxr542/ppt-academizer/blob/main/docs/DEPLOY-NETLIFY.md" target="_blank" rel="noopener">배포 안내</a>)
     </p>
-    <p class="sub" id="limits-hint">PowerPoint(.pptx) → OKESTRO 아카데미 강의안 변환 · 한도 확인 중…</p>
+    <p class="sub" id="limits-hint">PowerPoint(.pptx)·HTML → OKESTRO 아카데미 강의안 변환 · 한도 확인 중…</p>
     <aside class="about-box" id="aboutService" aria-label="서비스 안내">
       <h2>PPT 아카데미화란?</h2>
       <ul>
-        <li>일반·AI로 만든 <strong>.pptx</strong>를 OKESTRO <strong>아카데미 강의안</strong> 템플릿·레이아웃으로 맞춥니다.</li>
+        <li>일반·AI로 만든 <strong>.pptx</strong>(또는 정적 <strong>.html</strong> 문서)를 OKESTRO <strong>아카데미 강의안</strong> 템플릿·레이아웃으로 맞춥니다.</li>
         <li><strong>텍스트</strong>와 <strong>슬라이드 구성</strong>(표지·목차·본문 등)을 변환합니다.</li>
       </ul>
       <p class="caveat"><strong>단, 이미지는 변환하지 않습니다.</strong> 사진·차트 등은 가능한 범위에서 원본을 옮기며, 아카데미 스타일로 새로 그리지 않습니다.</p>
@@ -371,10 +371,10 @@
     <!-- Step 1 -->
     <section class="panel" id="panel1">
       <div id="drop" role="button" tabindex="0">
-        <p>여기에 <strong>.pptx</strong>를 놓거나 클릭</p>
+        <p>여기에 <strong>.pptx</strong> 또는 <strong>.html</strong>을 놓거나 클릭</p>
         <p id="fileName" class="hidden"></p>
       </div>
-      <input type="file" id="fileInput" accept=".pptx,application/vnd.openxmlformats-officedocument.presentationml.presentation" />
+      <input type="file" id="fileInput" accept=".pptx,.html,.htm,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/html" />
 
       <div id="wizardBody" class="hidden">
         <div class="structure" id="structureBox">
@@ -523,13 +523,13 @@
         serverLimits.maxUploadMb = h.max_upload_mb ?? serverLimits.maxUploadMb;
         serverLimits.standardMaxSlides = h.standard_max_slides ?? serverLimits.standardMaxSlides;
         limitsHint.textContent =
-          "PowerPoint(.pptx) → OKESTRO 아카데미 강의안 · 업로드 " +
+          "PowerPoint(.pptx)·HTML → OKESTRO 아카데미 강의안 · 업로드 " +
           serverLimits.maxUploadMb + "MB · 표준 모드 권장 " + serverLimits.standardMaxSlides + "장 이하" +
           (h.service_version ? " · v" + h.service_version : "");
       } catch (_) {
         banner.classList.remove("hidden");
         limitsHint.textContent =
-          "PowerPoint(.pptx) → OKESTRO 아카데미 강의안 · 업로드 " +
+          "PowerPoint(.pptx)·HTML → OKESTRO 아카데미 강의안 · 업로드 " +
           serverLimits.maxUploadMb + "MB · 표준 모드 권장 " + serverLimits.standardMaxSlides + "장 이하";
       }
     }
@@ -709,8 +709,8 @@
     function setFile(file) {
       if (!file) return;
       const name = file.name.toLowerCase();
-      if (!name.endsWith(".pptx")) {
-        status.textContent = ".pptx 파일만 업로드할 수 있습니다.";
+      if (!/\.(pptx|html?)$/.test(name)) {
+        status.textContent = ".pptx 또는 .html 파일만 업로드할 수 있습니다.";
         status.className = "error";
         return;
       }

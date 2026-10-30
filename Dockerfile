@@ -4,7 +4,7 @@ FROM python:3.12-slim-bookworm
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libxml2 libxslt1.1 \
+    libxml2 libxslt1.1 libcairo2 \
     git \
     openssh-client \
     && rm -rf /var/lib/apt/lists/*
