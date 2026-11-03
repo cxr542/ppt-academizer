@@ -2,6 +2,11 @@
 
 형식: [Keep a Changelog](https://keepachangelog.com/). 상세는 [releases/](releases/) 참고.
 
+## [1.8.1] - 2026-11-03
+
+Fix: **HTML 입력의 SVG 구성도에서 한글이 네모(□)로 깨지던 문제.** 운영 이미지(`python:slim`)에 글꼴이 하나도 없어, SVG가 지정한 `Apple SD Gothic Neo`·`Malgun Gothic`·`Noto Sans KR`을 cairosvg가 찾지 못하고 글리프 없이 그렸습니다. Dockerfile에 `fontconfig`·`fonts-nanum`(나눔고딕)을 추가하고, cairosvg가 글꼴 이름만 보고 고른다는 점 때문에 `docker/fonts-local.conf`로 위 세 이름과 `sans-serif`·`system-ui`를 나눔고딕에 연결합니다. 글꼴만 설치해서는 `Apple SD Gothic Neo`가 DejaVu로 연결돼 그대로 깨졌습니다. 코드 변경은 없습니다.  
+확인: 운영과 같은 Docker 이미지에서 HPA 시연 가이드 v2의 구성도 SVG를 변환해 한글이 나오는지 비교했습니다(수정 전은 □).  
+
 ## [1.8.0] - 2026-10-30
 
 Add: **HTML 문서도 입력으로 받습니다(`.html`·`.htm`).** 업로드된 정적 HTML을 일반 .pptx로 바꾼 뒤(`core/html_to_pptx.py`) 기존 아카데미 변환에 그대로 태우므로 `/wizard/preview`·`/analyze`·`/academize`가 모두 HTML을 받습니다. 슬라이드 나누기: `h1`=표지(앞뒤의 eyebrow·부제 문단 포함), `h3`가 있는 `h2`=간지 + `h3`마다 내용 슬라이드, `h3`가 없는 `h2`=내용 슬라이드, `h4` 이하는 굵은 소제목. 한 슬라이드에 안 들어가면 "제목 (1/2)"처럼 나누고 표는 머리글 행을 반복합니다. 표는 표로, `data:` 그림과 인라인/`data:` SVG는 그림으로(SVG는 `cairosvg`로 PNG 변환, 도구가 없거나 실패하면 건너뜀), 코드블록은 고정폭 상자로, `note`·`callout` 등 강조 박스는 강조 상자로 옮깁니다. `script`·`style`·목차 `nav`·버튼·외부 주소 그림은 가져오지 않습니다(JS로 그려지는 내용은 실행하지 않음). 새 글은 만들지 않고 원문만 재배치합니다.  
