@@ -5,6 +5,7 @@ WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libxml2 libxslt1.1 libcairo2 \
+    fontconfig fonts-nanum \
     git \
     openssh-client \
     && rm -rf /var/lib/apt/lists/*
@@ -17,6 +18,7 @@ COPY core core
 COPY engine engine
 COPY config config
 COPY scripts scripts
+COPY docker/fonts-local.conf /etc/fonts/local.conf
 COPY docker/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
