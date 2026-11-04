@@ -43,8 +43,50 @@ Funnel은 인증 없이 인터넷에 열리므로, 주소는 TMS 설정과 구�
 ## 5. 24/7 운영 설정
 - 전원 옵션: 절전·최대 절전 끄기
 - Windows 업데이트 활동 시간을 근무 시간으로, 재부팅은 새벽에
-- 재부팅 후 자동 시작: Tailscale "항상 실행", WSL(`docker-host`)이 부팅 때 시작되도록 작업 스케줄러 등록(재부팅 시험 후 이 문서에 절차 추가)
 - 컨테이너는 `restart: unless-stopped`라 Docker가 뜨면 같이 올라온다
+
+### 재부팅 후 로그인 없이 자동 복구 (2026-11-04 재부팅 시험 통과)
+WSL 배포판은 **계정별**이고 로그인 세션이 없으면 꺼진다. 로그인 없이 부팅만으로 올리려면 전용 일반 계정의 작업 스케줄러가 WSL을 시작하게 한다. 서버 터미널(관리자 명령 프롬프트)에서 순서대로 실행한다.
+
+1. Tailscale이 로그인 전에도 연결되게 한다.
+```powershell
+tailscale set --unattended
+```
+
+2. 전용 계정을 만든다. 비밀번호는 프롬프트에 직접 입력하고 안전한 곳에 보관한다(문서·채팅에 적지 않는다).
+```powershell
+net user okestro * /add
+net localgroup "Performance Log Users" okestro /add
+powershell -NoProfile -Command "$u=[ADSI]'WinNT://./okestro,user'; $u.UserFlags.Value = $u.UserFlags.Value -bor 0x10000; $u.SetInfo()"
+```
+`Performance Log Users`는 "로그인 없이 도는 작업(batch 로그온)" 권한을 주려는 최소 권한 그룹이다(관리자 권한 불필요). 마지막 줄은 비밀번호가 만료돼 작업이 멈추는 것을 막는다.
+
+3. 지금 쓰는 `docker-host`를 `okestro` 계정의 배포판으로 옮긴다(`docker-host`가 이미 다른 사용자 계정에 있을 때).
+```powershell
+mkdir C:\wsl
+wsl --export docker-host C:\wsl\docker-host.tar
+echo wsl.exe --import docker-host C:\wsl\okestro C:\wsl\docker-host.tar --version 2 ^> C:\wsl\import-okestro.log 2^>^&1 > C:\wsl\import-okestro.cmd
+schtasks /create /tn "okestro-import" /sc once /st 00:00 /ru okestro /rp * /tr "C:\wsl\import-okestro.cmd" /f
+schtasks /run /tn "okestro-import"
+dir C:\wsl\okestro
+```
+`wsl --export`는 실행 중인 `docker-host`를 멈추므로 엔진이 잠시 내려간다. 1~2분 뒤 `C:\wsl\okestro\ext4.vhdx`(약 3GB)가 보이면 가져오기 성공이다(로그는 한글이 깨지므로 파일 존재로 판단).
+
+4. 부팅 시 시작하는 작업을 만들고, 전환한다. **옛 엔진과 새 엔진을 동시에 켜지 않는다**(8765 포트가 겹친다).
+```powershell
+schtasks /create /tn "okestro-wsl-boot" /sc onstart /ru okestro /rp * /tr "wsl.exe -d docker-host --exec sleep infinity" /f
+schtasks /end /tn "<옛 유지 작업 이름>" & wsl --terminate docker-host & schtasks /run /tn "okestro-wsl-boot"
+schtasks /change /tn "<옛 유지 작업 이름>" /disable
+```
+옛 작업과 옛 배포판은 롤백용으로 남기고 삭제하지 않는다.
+
+5. 재부팅(`shutdown /r /t 60`)한 뒤 **서버 화면에 로그인하지 않은 채로** `/health`가 200인지 본다. 2026-11-04 시험에서는 부팅 8초 뒤 작업이 시작되고 공개 `/health`가 200이었다.
+
+### 알려진 제약
+- WSL은 SYSTEM 계정에서 실행되지 않는다(`WSL_E_LOCAL_SYSTEM_NOT_SUPPORTED`).
+- 비밀번호가 빈 계정은 로그인 없이 도는 작업에 쓸 수 없다(보안 정책 `LimitBlankPasswordUse=1`). 그래서 비밀번호가 있는 전용 계정이 필요하다.
+- `okestro` 비밀번호를 바꾸면 `okestro-wsl-boot` 작업을 다시 만들어야 한다.
+- 서버 재부팅 직후 StarDesk 같은 화면 원격 도구는 로그인 전까지 오프라인이다. 장애 진단은 SSH(Tailscale)로 한다.
 
 ## 6. 업데이트(엔진 새 버전 반영)
 `docker-host` 안에서 실행한다.
