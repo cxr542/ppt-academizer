@@ -104,3 +104,38 @@ docker compose logs --tail 100
 docker stats --no-stream
 docker compose restart
 ```
+
+## 8. 장애 알림과 대응
+
+### 감시 설정 (서버 밖 모니터, 메일 알림)
+서버 안에서 감시하면 서버가 죽을 때 알림도 같이 죽으므로 외부 업타임 모니터(UptimeRobot·Better Stack 무료 등)로 공개 주소를 본다.
+
+| 항목 | 값 |
+|------|----|
+| 대상 | `https://<pc이름>.<tailnet>.ts.net/health` |
+| 방식 | HTTP(S) + 본문 키워드 검사 |
+| 키워드(모두 포함) | `"ok":true` · `"template_configured":true` · `"llm_configured":true` |
+| 간격 | 5분 |
+| 알림 조건 | 2회 연속 실패(약 10분) |
+| 알림 채널 | 메일(담당자 2명 이상 권장), 복구 알림 포함 |
+
+키워드 검사가 필요한 이유: `.env`나 assets가 빠진 채 엔진이 떠도 `/health`는 200이라, 상태 코드만 보면 놓친다. 모니터에 넣는 주소는 문서·채팅에 실제 값을 적지 않는다.
+
+### 알림을 받았을 때
+1. 공개 `/health`를 직접 연다. 502면 WSL·Docker 정지, 타임아웃이면 서버·Tailscale 문제, 200인데 키워드 실패면 설정 누락이다.
+2. 다른 기기에서 `tailscale status`로 서버(`okestroacademy`)가 온라인인지 본다.
+3. 온라인이면 SSH(Tailscale)로 접속해 작업 `okestro-wsl-boot` 상태를 본다.
+```powershell
+schtasks /query /tn "okestro-wsl-boot" /v /fo list
+```
+4. 작업이 멈춰 있으면 다시 실행한다. 엔진이 안 올라오면 `okestro` 배포판 안에서 `docker compose restart`(7절).
+```powershell
+schtasks /run /tn "okestro-wsl-boot"
+```
+5. 서버가 오프라인이면 전원·네트워크를 확인한다. 화면 원격 도구(StarDesk 등)는 재부팅 직후 로그인 전까지 오프라인이므로 SSH를 먼저 쓴다.
+6. 옛 `User` 계정의 `docker-host` 배포판은 켜지 않는다(8765 포트 충돌).
+
+### 이 감시로 못 잡는 것
+- 특정 파일만 변환에 실패하는 품질 문제
+- Gemini 키 한도 초과(키 발급처에서 사용량·예산 알림을 따로 설정)
+- WSL 디스크 부족(`/health`는 200이지만 변환이 실패할 수 있음) — 주기적으로 `docker system df`로 확인
