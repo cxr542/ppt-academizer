@@ -1,0 +1,28 @@
+# 사내 PC/서버에서 ppt-academizer 엔진 실행 (Docker Desktop 또는 Docker Engine)
+# 사용법: README.md
+services:
+  api:
+    build:
+      context: ../..
+    image: ppt-academizer:local
+    container_name: ppt-academizer-api
+    restart: unless-stopped
+    # 이 PC 안에서만 열고, 바깥은 Tailscale Funnel(HTTPS)이 이 포트로 연결한다.
+    ports:
+      - "127.0.0.1:8765:8765"
+    env_file:
+      - .env
+    environment:
+      PPT_ACADEMIZER_SKIP_PP_REPAIR: "1"
+      TEMPLATE_PPTX: /assets/academy-template.pptx
+      BRAND_DIR: /assets/brand
+      PPT_ACADEMIZER_MAX_CONCURRENT: "3"
+    volumes:
+      - ./assets:/assets:ro
+    mem_limit: 16g
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8765/health',timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
