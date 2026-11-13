@@ -17,9 +17,9 @@ from api.upload_handlers import remove_upload_tmp, require_pptx_filename, save_u
 from core.html_to_pptx import html_to_pptx
 
 
-def _png_data_uri() -> str:
+def _png_data_uri(size: tuple[int, int] = (400, 300)) -> str:
     buf = io.BytesIO()
-    Image.new("RGB", (400, 300), "#3366cc").save(buf, "PNG")
+    Image.new("RGB", size, "#3366cc").save(buf, "PNG")
     return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
 
 
@@ -141,3 +141,79 @@ def test_unsupported_extension_message_names_both_formats():
     with pytest.raises(HTTPException) as exc:
         require_pptx_filename("a.docx")
     assert exc.value.status_code == 400 and "HTML" in exc.value.detail
+
+
+def _pics(slide):
+    return [sh for sh in slide.shapes if sh.shape_type == 13]
+
+
+def _slide_text(slide):
+    return "\n".join(sh.text_frame.text for sh in slide.shapes if sh.has_text_frame)
+
+
+def test_figure_caption_stays_on_the_slide_of_its_picture(tmp_path):
+    figs = "".join(
+        f'<figure><img src="{_png_data_uri((1200, 900))}"><figcaption>그림 {i}. 설명 {i}</figcaption></figure>' for i in (1, 2)
+    )
+    src = tmp_path / "fig.html"
+    src.write_text(f"<h1>도식</h1><h2>화면</h2>{figs}", encoding="utf-8")
+    prs = Presentation(str(html_to_pptx(src, tmp_path / "fig.pptx")))
+    for i in (1, 2):
+        holders = [s for s in prs.slides if f"그림 {i}. 설명 {i}" in _slide_text(s)]
+        assert len(holders) == 1
+        assert _pics(holders[0]), "the caption must sit on a slide that has a picture"
+    for s in prs.slides:
+        for sh in s.shapes:
+            assert sh.top + sh.height <= prs.slide_height + Inches(0.01)
+
+
+def test_long_eyebrow_and_lead_keep_the_cover_title_only(tmp_path):
+    long_lead = "긴 소개 문장입니다. " * 12
+    src = tmp_path / "cover.html"
+    src.write_text(
+        f'<p class="cat">실습 시나리오 · 버전</p><h1>가이드</h1><p class="lead">{long_lead}</p><h2>1. 개요</h2><p>본문</p>',
+        encoding="utf-8",
+    )
+    prs = Presentation(str(html_to_pptx(src, tmp_path / "cover.pptx")))
+    slides = list(prs.slides)
+    cover_text = _slide_text(slides[0])
+    assert "가이드" in cover_text and "소개 문장" not in cover_text and "실습 시나리오" not in cover_text
+    second = _slide_text(slides[1])
+    assert second.index("실습 시나리오") < second.index("긴 소개 문장")  # document order is kept
+    assert "본문" in _slide_text(slides[2])
+
+
+def test_short_eyebrow_and_subtitle_stay_on_the_cover(converted):
+    prs, _ = converted
+    cover = _slide_text(list(prs.slides)[0])
+    assert "VER 1.0" in cover and "부제 문장" in cover
+
+
+def test_step_cards_do_not_run_together_and_keep_their_own_numbers(tmp_path):
+    src = tmp_path / "steps.html"
+    src.write_text(
+        "<h1>흐름</h1><h2>단계</h2><ol>"
+        '<li><span class="n">5</span><div><div class="a"><span class="role">개발자</span>소스 수정</div>'
+        '<div class="w">GitLab <a href="#x">4.1</a></div></div></li>'
+        '<li><span class="n">6</span><div><div class="a"><span class="role">개발자</span>티켓 등록</div></div></li></ol>'
+        '<div class="box"><strong>참고</strong>주의 문장</div>',
+        encoding="utf-8",
+    )
+    prs = Presentation(str(html_to_pptx(src, tmp_path / "steps.pptx")))
+    text = _slide_text(list(prs.slides)[-1])
+    assert "5. 개발자 소스 수정" in text and "6. 개발자 티켓 등록" in text
+    assert "1. 5" not in text and "소스 수정GitLab" not in text
+    assert "참고 주의 문장" in text
+
+
+def test_short_label_lines_are_not_left_alone_at_the_end_of_a_slide(tmp_path):
+    items = "".join(f"<li>항목 {i} 설명 문장입니다</li>" for i in range(6))
+    for n in range(3, 14):  # sweep so that a page break lands right before the label for some n
+        filler = "".join(f"<p>{'채우는 문장입니다. ' * 6}{i}</p>" for i in range(n))
+        src = tmp_path / f"keep{n}.html"
+        src.write_text(f"<h1>문서</h1><h2>절</h2>{filler}<div>사전 준비</div><ul>{items}</ul>", encoding="utf-8")
+        prs = Presentation(str(html_to_pptx(src, tmp_path / f"keep{n}.pptx")))
+        for s in prs.slides:
+            body = [sh for sh in s.shapes if sh.has_text_frame and sh != s.shapes.title]
+            assert not (body and body[-1].text_frame.text.strip() == "사전 준비"), f"label orphaned (n={n})"
+        assert any("사전 준비" in _slide_text(s) and "항목 0" in _slide_text(s) for s in prs.slides)

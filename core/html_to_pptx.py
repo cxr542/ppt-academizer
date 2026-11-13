@@ -40,6 +40,7 @@ TEXT_PT = 16
 CODE_PT = 11
 NOTE_PT = 14
 TABLE_PT = 12
+CAPTION_PT = 12
 LINE_SPACING = 1.35
 BLOCK_GAP_IN = 0.14
 MONO_FONT = "Consolas"
@@ -49,6 +50,12 @@ _HEADINGS = {"h1": 1, "h2": 2, "h3": 3, "h4": 4, "h5": 5, "h6": 6}
 _NOTE_CLASS = re.compile(r"\b(note|callout|alert|warning|tip|admonition|notice|hint)\b", re.I)
 _META_CLASS = re.compile(r"\b(eyebrow|subtitle|lead|kicker)\b", re.I)
 _MAX_IMAGE_BYTES = 12 * 1024 * 1024
+# Container tags whose text must not run into its neighbours when flattened into one text run.
+_BLOCK_TAGS = {"div", "section", "article", "p", "li", "dd", "dt", "blockquote", "header", "main", "aside"}
+# A short "lead-in" line (step number, phase title ...) stays on the same slide as what follows it.
+_LEAD_IN_MAX_CHARS = 30
+# Cover subtitles longer than this would be dropped by the cover layout (engine COVER_MAX_BODY_CHARS).
+COVER_SUBTITLE_MAX_CHARS = 80
 
 Runs = list[tuple[str, bool, bool]]  # (text, bold, code)
 
@@ -56,8 +63,9 @@ Runs = list[tuple[str, bool, bool]]  # (text, bold, code)
 @dataclass
 class Block:
     kind: str  # p | meta | note | list | table | code | image | subhead
-    runs: Runs = field(default_factory=list)
+    runs: Runs = field(default_factory=list)  # image: its caption
     items: list[tuple[int, Runs]] = field(default_factory=list)  # list: (depth, runs)
+    markers: list[str | None] = field(default_factory=list)  # list: source-given marker per item
     ordered: bool = False
     rows: list[list[str]] = field(default_factory=list)  # table
     header_rows: int = 0
@@ -112,17 +120,32 @@ def _classes(el) -> str:
     return el.get("class", "") or ""
 
 
+_LEAD_INLINE = {"b", "strong", "span", "em", "i"}
+_LEAD_PARENTS = {"div", "li", "dd", "section", "article", "aside", "blockquote"}
+_NO_SPACE_BEFORE = ".,:;)]}!?·%"
+
+
 def _runs(el, bold: bool = False, code: bool = False) -> Runs:
-    """Flatten inline content of ``el`` into (text, bold, code) runs."""
+    """Flatten the content of ``el`` into (text, bold, code) runs.
+
+    Block-level children (div, p, section ...) are separated by a line break ("\\n" run) so their
+    texts do not run into each other, and a leading badge/label directly followed by text
+    (``<strong>참고</strong>문장``, which CSS usually renders as its own box or line) gets a space.
+    """
     out: Runs = []
 
     def add(text: str | None, b: bool, c: bool) -> None:
         if text:
             out.append((re.sub(r"\s+", " ", text) if not c else text, b, c))
 
+    def brk() -> None:
+        if out and out[-1][0] != "\n":
+            out.append(("\n", False, False))
+
     def walk(node, b: bool, c: bool) -> None:
         add(node.text, b, c)
-        for child in node:
+        lead_ok = isinstance(node.tag, str) and node.tag.lower() in _LEAD_PARENTS and not (node.text or "").strip()
+        for i, child in enumerate(node):
             if not isinstance(child.tag, str):
                 add(child.tail, b, c)
                 continue
@@ -133,7 +156,23 @@ def _runs(el, bold: bool = False, code: bool = False) -> Runs:
             if tag == "br":
                 add(" ", b, c)
             else:
+                block = tag in _BLOCK_TAGS
+                if block:
+                    brk()
                 walk(child, b or tag in ("b", "strong", "th"), c or tag in ("code", "kbd", "samp", "tt"))
+                if block:
+                    brk()
+                tail = child.tail or ""
+                if (
+                    i == 0
+                    and lead_ok
+                    and tag in _LEAD_INLINE
+                    and tail
+                    and not tail[0].isspace()
+                    and tail[0] not in _NO_SPACE_BEFORE
+                    and len(child.text_content().strip()) <= 24
+                ):
+                    add(" ", b, c)
             add(child.tail, b, c)
 
     walk(el, bold, code)
@@ -141,11 +180,27 @@ def _runs(el, bold: bool = False, code: bool = False) -> Runs:
 
 
 def _trim(runs: Runs) -> Runs:
-    runs = [r for r in runs if r[0]]
-    if runs:
-        runs[0] = (runs[0][0].lstrip(), runs[0][1], runs[0][2])
-        runs[-1] = (runs[-1][0].rstrip(), runs[-1][1], runs[-1][2])
-    return [r for r in runs if r[0]]
+    out: Runs = []
+    for text, bold, code in runs:
+        if not text:
+            continue
+        if text == "\n":
+            while out and out[-1][0] != "\n" and not out[-1][0].strip() and not out[-1][2]:
+                out.pop()
+            if out and out[-1][0] != "\n":
+                out.append((text, bold, code))
+            continue
+        if out and out[-1][0] == "\n" and not code:
+            text = text.lstrip()
+            if not text:
+                continue
+        out.append((text, bold, code))
+    while out and (out[-1][0] == "\n" or (not out[-1][0].strip() and not out[-1][2])):
+        out.pop()
+    if out:
+        out[0] = (out[0][0].lstrip(), out[0][1], out[0][2])
+        out[-1] = (out[-1][0].rstrip(), out[-1][1], out[-1][2])
+    return [r for r in out if r[0]]
 
 
 def _plain(runs: Runs) -> str:
@@ -266,16 +321,38 @@ def _table_block(el) -> Block | None:
     return Block("table", rows=rows, header_rows=header_rows)
 
 
-def _list_items(el, depth: int, out: list[tuple[int, Runs]]) -> None:
+def _own_number(li, runs: Runs) -> tuple[str | None, Runs]:
+    """Step cards often carry their own number (``<li><span>5</span>...``). Use it as the list marker
+    instead of printing it a second time after the automatic one (``1. 5 ...``)."""
+    first = next((c for c in li if isinstance(c.tag, str)), None)
+    if first is None or (li.text or "").strip() or first.tag.lower() not in ("span", "b", "strong", "i", "em"):
+        return None, runs
+    num = _clean(first.text_content())
+    if not (
+        num.isdigit()
+        and len(num) <= 3
+        and len(runs) > 1
+        and runs[0][0] == num
+        and (runs[1][0] == "\n" or runs[1][0][:1].isspace())
+    ):
+        return None, runs
+    rest = [(runs[0][0][len(num):], runs[0][1], runs[0][2])] + runs[1:]
+    return num, _trim(rest)
+
+
+def _list_items(el, depth: int, out: list[tuple[int, Runs]], markers: list[str | None] | None = None) -> None:
     for li in el:
         if not isinstance(li.tag, str) or li.tag.lower() != "li":
             continue
         runs = _runs(li)
+        num, runs = _own_number(li, runs)
         if runs:
             out.append((depth, runs))
+            if markers is not None:
+                markers.append(f"{num}." if num else None)
         for sub in li:
             if isinstance(sub.tag, str) and sub.tag.lower() in ("ul", "ol"):
-                _list_items(sub, depth + 1, out)
+                _list_items(sub, depth + 1, out, markers)
 
 
 def _walk(el, blocks: list, warns: list[str]) -> None:
@@ -300,9 +377,10 @@ def _walk(el, blocks: list, warns: list[str]) -> None:
                 blocks.append(("h", _HEADINGS[tag], text))
         elif tag in ("ul", "ol"):
             items: list[tuple[int, Runs]] = []
-            _list_items(child, 0, items)
+            markers: list[str | None] = []
+            _list_items(child, 0, items, markers)
             if items:
-                blocks.append(Block("list", items=items, ordered=tag == "ol"))
+                blocks.append(Block("list", items=items, ordered=tag == "ol", markers=markers))
         elif tag == "table":
             tb = _table_block(child)
             if tb:
@@ -315,6 +393,19 @@ def _walk(el, blocks: list, warns: list[str]) -> None:
             pic = _picture(child, warns)
             if pic:
                 blocks.append(pic)
+        elif tag == "figure" and all(
+            isinstance(c.tag, str) and c.tag.lower() in ("img", "svg", "picture", "figcaption", "br", "a", "source")
+            for c in child
+        ):
+            caption: Runs = []
+            for fc in child.iter("figcaption"):
+                caption += ([("\n", False, False)] if caption else []) + _runs(fc)
+            pics = [pic for el_ in child.iter("img", "svg") if (pic := _picture(el_, warns))]
+            if pics:
+                pics[-1].runs = caption  # the caption is drawn under the (last) picture
+                blocks.extend(pics)
+            elif caption:
+                blocks.append(Block("p", runs=caption))
         elif tag in ("p", "figcaption", "blockquote", "dt", "dd", "summary"):
             runs = _runs(child)
             if runs:
@@ -353,6 +444,11 @@ def _build_tree(body, warns: list[str]) -> Section:
     root = Section(1, "")
     stack = [root]
     seen_h1 = False
+    first_h1 = next((i for i, it in enumerate(flat) if isinstance(it, tuple) and it[1] == 1), None)
+    if first_h1 is not None and not any(isinstance(it, tuple) for it in flat[:first_h1]):
+        for i in range(first_h1):  # plain lines above the h1 are its eyebrow/kicker
+            if flat[i].kind == "p":
+                flat[i] = Block("meta", runs=flat[i].runs)
     for item in flat:
         if isinstance(item, tuple):
             _, level, text = item
@@ -434,8 +530,16 @@ def _block_h(b: Block) -> float:
         widths = _col_widths(b.rows, BODY_W_IN)
         return sum(_row_h(r, widths) for r in b.rows) + BLOCK_GAP_IN
     if b.kind == "image":
-        return _image_box(b, BODY_W_IN, BODY_H_IN)[1] + BLOCK_GAP_IN
+        cap = _caption_h(b)
+        return _image_box(b, BODY_W_IN, BODY_H_IN - cap - BLOCK_GAP_IN)[1] + cap + BLOCK_GAP_IN
     return BLOCK_GAP_IN
+
+
+def _caption_h(b: Block) -> float:
+    """Height of the caption drawn under a picture (0 when it has none)."""
+    if not b.runs:
+        return 0.0
+    return _text_h(_plain(b.runs), BODY_W_IN, CAPTION_PT) + 0.08
 
 
 def _image_box(b: Block, max_w: float, max_h: float) -> tuple[float, float]:
@@ -475,9 +579,10 @@ def _split_block(b: Block, room: float) -> tuple[Block | None, Block | None]:
             take += 1
         if take == 0 or take == len(b.items):
             return None, None
+        mk = b.markers if len(b.markers) == len(b.items) else [None] * len(b.items)
         return (
-            Block("list", items=b.items[:take], ordered=b.ordered),
-            Block("list", items=b.items[take:], ordered=b.ordered),
+            Block("list", items=b.items[:take], ordered=b.ordered, markers=mk[:take]),
+            Block("list", items=b.items[take:], ordered=b.ordered, markers=mk[take:]),
         )
     if b.kind == "code":
         lines = b.text.split("\n")
@@ -488,6 +593,16 @@ def _split_block(b: Block, room: float) -> tuple[Block | None, Block | None]:
     return None, None
 
 
+def _is_lead_in(b: Block) -> bool:
+    """A short label line (step number, phase title ...) that should not be left alone at a page end."""
+    if b.kind == "subhead":
+        return True
+    if b.kind not in ("p", "meta"):
+        return False
+    text = _plain(b.runs)
+    return len(text) <= _LEAD_IN_MAX_CHARS and "\n" not in text and not text.endswith((".", "다", "요", "。"))
+
+
 def _paginate(blocks: list[Block]) -> list[list[Block]]:
     pages: list[list[Block]] = []
     cur: list[Block] = []
@@ -496,6 +611,16 @@ def _paginate(blocks: list[Block]) -> list[list[Block]]:
     while queue:
         b = queue.pop(0)
         h = _block_h(b)
+        if cur and _is_lead_in(b):
+            group = [b]
+            for nxt in queue:
+                group.append(nxt)
+                if not _is_lead_in(nxt):
+                    break
+            group_h = sum(_block_h(g) for g in group)
+            if len(group) > 1 and used + group_h > BODY_H_IN and group_h <= BODY_H_IN:
+                pages.append(cur)  # start a new page so the label stays with its content
+                cur, used = [], 0.0
         if used + h <= BODY_H_IN or (not cur and h <= BODY_H_IN * 1.0):
             cur.append(b)
             used += h
@@ -532,9 +657,20 @@ def _render(root: Section, deck_title: str) -> Presentation:
     prs = Presentation()
     prs.slide_width = Inches(SLIDE_W_IN)
     prs.slide_height = Inches(SLIDE_H_IN)
-    subtitle = " · ".join(_plain(b.runs) for b in root.blocks if b.kind == "meta")
-    _cover(prs, deck_title, subtitle)
-    lead = [b for b in root.blocks if b.kind != "meta"]
+    metas = [b for b in root.blocks if b.kind == "meta"]
+    subtitle = " · ".join(_plain(b.runs) for b in metas)
+    if len(subtitle) > COVER_SUBTITLE_MAX_CHARS:
+        # The academy cover layout keeps the title only, so a long eyebrow/lead would be lost (and
+        # the slide read as a content slide). Keep the cover to the title and put the text on the
+        # first content slide, in document order.
+        _cover(prs, deck_title, "")
+        lead = list(root.blocks)
+    else:
+        _cover(prs, deck_title, subtitle)
+        lead = [b for b in root.blocks if b.kind != "meta"]
+    for b in lead:
+        if b.kind == "meta":
+            b.kind = "p"
     if lead:
         _content(prs, deck_title, lead)
     for sec in root.children:
@@ -591,6 +727,9 @@ def _content(prs: Presentation, title: str, blocks: list[Block]) -> None:
 
 def _set_runs(par, runs: Runs, size: float, *, color: RGBColor | None = None) -> None:
     for text, bold, code in runs:
+        if text == "\n":
+            par.add_line_break()
+            continue
         r = par.add_run()
         r.text = text
         r.font.size = Pt(size if not code else max(size - 1, 9))
@@ -626,7 +765,10 @@ def _draw(slide, b: Block, y: float) -> float:
             par = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
             par.level = min(depth, 4)
             marker = "•"
-            if b.ordered:
+            own = b.markers[i] if i < len(b.markers) else None
+            if own:
+                marker = own
+            elif b.ordered:
                 counters[depth] = counters.get(depth, 0) + 1
                 marker = f"{counters[depth]}."
             _set_runs(par, [(f"{marker} ", False, False)] + runs, TEXT_PT)
@@ -675,8 +817,13 @@ def _draw(slide, b: Block, y: float) -> float:
                 run.text = text
                 run.font.size = Pt(TABLE_PT)
     elif b.kind == "image":
-        w, ih = _image_box(b, BODY_W_IN, min(BODY_H_IN, room))
+        cap = _caption_h(b)
+        w, ih = _image_box(b, BODY_W_IN, max(min(BODY_H_IN, room) - cap - BLOCK_GAP_IN, 0.5))
         x = MARGIN_IN + (BODY_W_IN - w) / 2
         slide.shapes.add_picture(io.BytesIO(b.image), Inches(x), Inches(y), Inches(w), Inches(ih))
         h = ih + BLOCK_GAP_IN
+        if cap:
+            tb = _textbox(slide, [b.runs], MARGIN_IN, y + ih + 0.04, BODY_W_IN, cap - 0.08, CAPTION_PT)
+            tb.text_frame.paragraphs[0].alignment = 2  # centered under the picture
+            h = ih + cap + BLOCK_GAP_IN
     return h
