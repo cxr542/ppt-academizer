@@ -29,6 +29,7 @@ from scripts.academy_brand import (  # noqa: E402
     replace_matched_icons,
     resolve_brand_dir,
 )
+from scripts.academy_elements_style import apply_elements_style  # noqa: E402
 from scripts.academy_palette import map_slide_colors, palette_from_pack  # noqa: E402
 from scripts.academy_layout_patterns import (  # noqa: E402
     apply_card_column_pattern,
@@ -1751,6 +1752,8 @@ def migrate_content_body(
     if not preserve_body_style:
         apply_academy_body_shape_typography(slide)
     apply_academy_tables_on_slide(slide)
+    # Table and text styles of the template elements deck (styling only, content is untouched).
+    apply_elements_style(slide)
     return (
         radial,
         skip_relayout,
