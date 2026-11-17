@@ -76,6 +76,20 @@ def _is_stacked(band: TextBand) -> bool:
     return narrower > 0 and overlap >= 0.5 * narrower
 
 
+# A governing message is one short sentence under the title. Anything longer or made of several
+# paragraphs is body text (a card heading plus its bullets), and must stay in the body.
+GOVERNING_MAX_CHARS = 120
+
+
+def _looks_like_body(band: TextBand) -> bool:
+    """True when a band is a list of points or a long text, not a one-line governing message."""
+    for b in band.blocks:
+        paragraphs = [p for p in (b["text"] or "").split("\n") if p.strip()]
+        if len(paragraphs) >= 2:
+            return True
+    return len(band.text.replace("\n", " ").strip()) > GOVERNING_MAX_CHARS
+
+
 def cluster_bands(blocks: list[dict], y_threshold: float = 0.15) -> list[TextBand]:
     """Group blocks by vertical proximity (Y-threshold in inches)."""
     if not blocks:
@@ -124,7 +138,12 @@ def analyze_slide_layout(slide) -> dict[str, Any]:
             remaining = [b for b in bands if b != title_band and b.top >= title_band.top]
             if remaining:
                 candidate = remaining[0]
-                if candidate.top < 3.0 and len(candidate.blocks) <= 2 and _is_stacked(candidate):
+                if (
+                    candidate.top < 3.0
+                    and len(candidate.blocks) <= 2
+                    and _is_stacked(candidate)
+                    and not _looks_like_body(candidate)
+                ):
                     governing_band = candidate
                     remaining = remaining[1:]
             

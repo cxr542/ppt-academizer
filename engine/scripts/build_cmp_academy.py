@@ -1701,6 +1701,9 @@ def migrate_content_body(
     # A governing line longer than ph13 allows is hidden above; it must then stay in the body,
     # otherwise the same text is excluded from both places and vanishes.
     governing_used = governing if (gov and len(gov) <= bac.GOV_MAX_LEN) else None
+    # Body shapes are copied in place (no relayout), so connectors stay aligned with the boxes
+    # they join. Dropping them for "radial" slides erased the arrows of flowcharts that the
+    # radial heuristic mistook for hub diagrams.
     id_remap = copy_body_shapes_filtered(
         src_slide,
         slide,
@@ -1708,7 +1711,7 @@ def migrate_content_body(
         governing_used,
         slide_width,
         slide_height,
-        skip_connectors=radial,
+        skip_connectors=False,
     )
     restored = sync_raster_diagram_assets(
         src_slide,
@@ -1717,13 +1720,12 @@ def migrate_content_body(
         governing_used,
         slide_width,
         slide_height,
-        skip_connectors=radial,
+        skip_connectors=False,
         force_permissive=force_raster,
         src_classify_empty=src_classify_empty,
     )
     renumber_map = bac.renumber_shape_ids(slide)
-    if not radial:
-        bac.fix_orphan_connector_refs(slide, id_remap, renumber_map)
+    bac.fix_orphan_connector_refs(slide, id_remap, renumber_map)
     canvas_rescaled = False
     if canvas_mismatch:
         rescale_body_shapes_to_canvas(
