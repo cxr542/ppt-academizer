@@ -120,6 +120,29 @@ def cluster_bands(blocks: list[dict], y_threshold: float = 0.15) -> list[TextBan
     
     return [TextBand(band) for band in bands]
 
+COVER_META_MAX_BLOCKS = 5
+COVER_META_MAX_CHARS = 80
+
+
+def _is_cover_meta_only(blocks: list[dict], data_object: bool) -> bool:
+    """Cover-like text: a few single-paragraph blocks, none of them a long passage."""
+    if data_object or not blocks or len(blocks) > COVER_META_MAX_BLOCKS:
+        return False
+    return all(
+        "\n" not in b["text"].strip() and len(b["text"].strip()) <= COVER_META_MAX_CHARS
+        for b in blocks
+    )
+
+
+def cover_lines(blocks: list[dict]) -> list[str]:
+    """Title (largest font) first, then the other lines largest-first (ties by position)."""
+    ordered = sorted(
+        (b for b in blocks if b["text"].strip()),
+        key=lambda b: (-(b.get("font_size") or 0), b["top"]),
+    )
+    return [b["text"].strip() for b in ordered]
+
+
 def analyze_slide_layout(slide) -> dict[str, Any]:
     """Extract semantic bands and compute scores for layouts."""
     blocks = slide_text_blocks(slide)
@@ -230,4 +253,7 @@ def analyze_slide_layout(slide) -> dict[str, Any]:
         "blocks": blocks,
         # True when a cover/section rendering (title only) would drop real content.
         "body_heavy": body_heavy,
+        # True when the "body" is only short one-line meta text (eyebrow, subtitle, source
+        # line) around a title, as on a real cover; ``cover_lines`` keeps all of it.
+        "cover_meta_only": _is_cover_meta_only(blocks, data_object),
     }

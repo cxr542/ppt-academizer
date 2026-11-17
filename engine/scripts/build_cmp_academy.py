@@ -48,6 +48,7 @@ from scripts.deck_migrate_config import (  # noqa: E402
 )
 from scripts.pptx_ingest import iter_shapes, iter_shapes_abs, slide_notes_text  # noqa: E402
 from scripts.llm_classifier import analyze_slide_with_llm  # noqa: E402
+from scripts.slide_classifier_v2 import cover_lines  # noqa: E402
 
 import scripts.academy_deck_build_lib as adl  # noqa: E402
 from scripts.academy_deck_build_lib import (  # noqa: E402,F401  (re-exported for tests)
@@ -331,7 +332,9 @@ def build_slide_plan(
         if i == 0:
             # Slide 0 is the cover unless it carries a table/chart or a real body of text:
             # a cover is migrated as title text only, so those would be dropped.
-            plan.append((i, "content" if analyze_slide_with_llm(slide).get("body_heavy") else "cover"))
+            info0 = analyze_slide_with_llm(slide)
+            heavy = info0.get("body_heavy") and not info0.get("cover_meta_only")
+            plan.append((i, "content" if heavy else "cover"))
             continue
         kind = classify_slide(slide, i, cfg.part_cover_indices)
         if kind == "empty":
@@ -1111,6 +1114,14 @@ def apply_brand_pack_to_slide(
 
 
 def fill_cover_from_source(slide, src_slide, cfg: DeckMigrateConfig) -> None:
+    info = analyze_slide_with_llm(src_slide)
+    if info.get("body_heavy") and info.get("cover_meta_only"):
+        # Eyebrow / subtitle / source line around the title: keep every line, title first.
+        lines = [_normalize_header_line(t) for t in cover_lines(info["blocks"])]
+        if cfg.cover_subtitle:
+            lines.insert(1, cfg.cover_subtitle)
+        _fill_cover(slide, ["\n".join(lines)], title_font_pt=36, body_font_pt=16)
+        return
     title, governing = extract_header(src_slide, "cover")
     cover_text = title or "강의"
     if cfg.cover_subtitle:
