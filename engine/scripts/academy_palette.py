@@ -37,7 +37,7 @@ FOREIGN_MIN_SATURATION = 0.30
 FOREIGN_HUE_GAP = 0.07  # of the 0..1 hue circle (about 25 degrees)
 
 _A_NS = "http://schemas.openxmlformats.org/drawingml/2006/main"
-_SKIP_ANCESTORS = frozenset({"blip", "graphicFrame", "pic"})
+_SKIP_ANCESTORS = frozenset({"blip", "pic"})
 
 
 def palette_from_pack(pack: dict | None) -> dict[str, str]:
@@ -128,15 +128,14 @@ def _in_skipped_part(el) -> bool:
 def map_slide_colors(slide, palette: dict[str, str] | None = None) -> int:
     """Remap explicit RGB colors of the non-placeholder shapes of ``slide``; returns the count.
 
-    Pictures, tables and chart frames are left alone (a picture's pixels are not recolored, and
-    tables are styled by their own pass).
+    Table cell fills, borders and text are recolored too. Pictures and chart frames are left
+    alone (a picture's pixels are not recolored, and a chart's colors live in its own part).
     """
     pal = palette or DEFAULT_PALETTE
     changed = 0
     for shape in slide.shapes:
         if shape.is_placeholder or shape.shape_type in (
             MSO_SHAPE_TYPE.PICTURE,
-            MSO_SHAPE_TYPE.TABLE,
             MSO_SHAPE_TYPE.CHART,
         ):
             continue
