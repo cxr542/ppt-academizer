@@ -837,6 +837,35 @@ def _strip_connector_style_element(conn) -> None:
                 parent.remove(el)
 
 
+def _copy_line_direction(dst_shape, src_shape) -> None:
+    """Keep what makes a connector an arrow: its head/tail ends and its flip.
+
+    A flowchart arrow is read by its arrowhead and direction; a plain rebuilt line shows no
+    direction (or points the wrong way for a flipped source).
+    """
+    a_ns = "http://schemas.openxmlformats.org/drawingml/2006/main"
+    try:
+        src_ln = src_shape._element.find(f".//{{{a_ns}}}ln")
+        dst_ln = dst_shape._element.find(f".//{{{a_ns}}}ln")
+        if src_ln is not None and dst_ln is not None:
+            for tag in ("headEnd", "tailEnd"):
+                for old in dst_ln.findall(f"{{{a_ns}}}{tag}"):
+                    dst_ln.remove(old)
+            # headEnd precedes tailEnd in the schema, after the fill/dash/join children.
+            for tag in ("headEnd", "tailEnd"):
+                end = src_ln.find(f"{{{a_ns}}}{tag}")
+                if end is not None:
+                    dst_ln.append(deepcopy(end))
+        src_xfrm = src_shape._element.find(f".//{{{a_ns}}}xfrm")
+        dst_xfrm = dst_shape._element.find(f".//{{{a_ns}}}xfrm")
+        if src_xfrm is not None and dst_xfrm is not None:
+            for attr in ("flipH", "flipV"):
+                if src_xfrm.get(attr) in ("1", "true"):
+                    dst_xfrm.set(attr, "1")
+    except Exception:
+        pass
+
+
 def copy_line_native(slide, shape, left=None, top=None) -> None:
     """Straight connector from shape bounds (safe for Google-export cxnSp)."""
     x1 = left if left is not None else shape.left
@@ -854,6 +883,7 @@ def copy_line_native(slide, shape, left=None, top=None) -> None:
         conn.line.fill.fore_color.theme_color = MSO_THEME_COLOR.ACCENT_1
     except Exception:
         pass
+    _copy_line_direction(conn, shape)
     _strip_connector_style_element(conn)
 
 
