@@ -879,8 +879,11 @@ def copy_line_native(slide, shape, left=None, top=None) -> None:
     )
     _copy_line(conn, shape)
     try:
-        conn.line.fill.solid()
-        conn.line.fill.fore_color.theme_color = MSO_THEME_COLOR.ACCENT_1
+        # Keep the source line color (mapped to the academy palette later); only a line with no
+        # color of its own falls back to the theme accent.
+        if conn.line.fill.type != MSO_FILL.SOLID:
+            conn.line.fill.solid()
+            conn.line.fill.fore_color.theme_color = MSO_THEME_COLOR.ACCENT_1
     except Exception:
         pass
     _copy_line_direction(conn, shape)

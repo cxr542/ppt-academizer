@@ -29,6 +29,7 @@ from scripts.academy_brand import (  # noqa: E402
     replace_matched_icons,
     resolve_brand_dir,
 )
+from scripts.academy_palette import map_slide_colors, palette_from_pack  # noqa: E402
 from scripts.academy_layout_patterns import (  # noqa: E402
     apply_card_column_pattern,
     detect_card_column_count,
@@ -1741,6 +1742,9 @@ def migrate_content_body(
     preserve_body_style = True
 
     apply_slide_title_layout(slide, slide_width, title or "")
+    # Colors only: the copied body keeps its structure, but its fills, lines and text colors
+    # move onto the academy palette (diagram boxes, arrows, labels).
+    map_slide_colors(slide, palette_from_pack(brand_pack))
     if not skip_relayout:
         relayout_content_columns(slide, slide_width)
     apply_academy_fonts_and_colors(slide, placeholders_only=preserve_body_style)
