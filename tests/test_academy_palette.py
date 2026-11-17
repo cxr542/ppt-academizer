@@ -94,3 +94,20 @@ def test_connector_keeps_its_own_color_when_copied() -> None:
 
     copied = [s for s in dst.shapes if s._element.tag.endswith("}cxnSp")][0]
     assert str(copied.line.color.rgb) == "5F6B86"
+
+
+def test_table_cell_colors_are_mapped_too() -> None:
+    prs = Presentation()
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    frame = slide.shapes.add_table(2, 2, Inches(1), Inches(1), Inches(4), Inches(2))
+    cell = frame.table.cell(0, 0)
+    cell.fill.solid()
+    cell.fill.fore_color.rgb = RGBColor.from_string("14213D")
+    cell.text_frame.text = "머리글"
+    cell.text_frame.paragraphs[0].runs[0].font.color.rgb = RGBColor.from_string("3F4A63")
+
+    assert map_slide_colors(slide) >= 2
+
+    assert str(cell.fill.fore_color.rgb) in PALETTE_VALUES
+    assert str(cell.text_frame.paragraphs[0].runs[0].font.color.rgb) == "44546A"
+    assert cell.text_frame.text == "머리글"
