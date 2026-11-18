@@ -134,13 +134,34 @@ def _is_cover_meta_only(blocks: list[dict], data_object: bool) -> bool:
     )
 
 
-def cover_lines(blocks: list[dict]) -> list[str]:
-    """Title (largest font) first, then the other lines largest-first (ties by position)."""
-    ordered = sorted(
-        (b for b in blocks if b["text"].strip()),
-        key=lambda b: (-(b.get("font_size") or 0), b["top"]),
-    )
-    return [b["text"].strip() for b in ordered]
+COVER_FOOTER_MIN_TOP_RATIO = 0.8
+
+
+def split_cover_roles(blocks: list[dict], slide_height_in: float) -> dict:
+    """Roles of the text on a cover: the largest text is the title; lines above it are the
+    eyebrow, lines at the very bottom of the slide are the source/date footer, the rest below
+    the title is the subtitle. Each group is in reading order (top to bottom)."""
+    live = [b for b in blocks if b["text"].strip()]
+    if not live:
+        return {"title": None, "eyebrow": [], "subtitle": [], "footer": []}
+    title = max(live, key=lambda b: (b.get("font_size") or 0, -b["top"]))
+    rest = [b for b in live if b is not title]
+    footer = [
+        b for b in rest
+        if b["top"] > title["top"] and b["top"] >= COVER_FOOTER_MIN_TOP_RATIO * slide_height_in
+    ]
+    eyebrow = [b for b in rest if b["top"] < title["top"] and b not in footer]
+    subtitle = [b for b in rest if b not in footer and b not in eyebrow]
+
+    def texts(group):
+        return [b["text"].strip() for b in sorted(group, key=lambda b: (b["top"], b["left"]))]
+
+    return {
+        "title": title["text"].strip(),
+        "eyebrow": texts(eyebrow),
+        "subtitle": texts(subtitle),
+        "footer": texts(footer),
+    }
 
 
 def analyze_slide_layout(slide) -> dict[str, Any]:

@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import importlib.util
+import io
 import re
 import shutil
 import sys
@@ -15,6 +17,7 @@ from pptx.dml.color import RGBColor
 from pptx.enum.dml import MSO_COLOR_TYPE, MSO_FILL
 from pptx.enum.shapes import MSO_SHAPE_TYPE
 from pptx.enum.text import MSO_ANCHOR, PP_ALIGN
+from pptx.oxml.ns import qn
 from pptx.util import Inches, Pt
 
 PPT_TEST = Path(__file__).resolve().parent.parent
@@ -48,7 +51,7 @@ from scripts.deck_migrate_config import (  # noqa: E402
 )
 from scripts.pptx_ingest import iter_shapes, iter_shapes_abs, slide_notes_text  # noqa: E402
 from scripts.llm_classifier import analyze_slide_with_llm  # noqa: E402
-from scripts.slide_classifier_v2 import cover_lines  # noqa: E402
+from scripts.slide_classifier_v2 import split_cover_roles  # noqa: E402
 
 import scripts.academy_deck_build_lib as adl  # noqa: E402
 from scripts.academy_deck_build_lib import (  # noqa: E402,F401  (re-exported for tests)
@@ -1113,14 +1116,108 @@ def apply_brand_pack_to_slide(
             icon_hits.extend(replaced)
 
 
+COVER_ICON_MAX_EMU = int(2.0 * 914400)
+COVER_ICON_DRAW_EMU = int(0.9 * 914400)
+COVER_ICON_GAP_EMU = int(0.2 * 914400)
+
+
+def _cover_icon_pictures(src_slide, slide_width: int, slide_height: int) -> list:
+    """Small pictures of a source cover (product icons, logos), left to right. Backgrounds and
+    big art are not icons."""
+    icons = []
+    for sh in src_slide.shapes:
+        if sh.shape_type != MSO_SHAPE_TYPE.PICTURE:
+            continue
+        if max(int(sh.width or 0), int(sh.height or 0)) > COVER_ICON_MAX_EMU:
+            continue
+        if is_full_bleed_picture(sh, slide_width, slide_height):
+            continue
+        icons.append(sh)
+    return sorted(icons, key=lambda sh: (int(sh.left or 0), int(sh.top or 0)))
+
+
+def _text_rect_inset_emu(box) -> int:
+    """How far a rounded rectangle's text area sits inside its outline (0 for other shapes)."""
+    el = box._element.spPr.find(qn("a:prstGeom"))
+    if el is None or el.get("prst") != "roundRect":
+        return 0
+    adj = 16667
+    gd = el.find(".//" + qn("a:gd"))
+    if gd is not None and gd.get("fmla", "").startswith("val "):
+        try:
+            adj = int(gd.get("fmla").split()[1])
+        except ValueError:
+            pass
+    return int(min(int(box.width), int(box.height)) * adj / 100000 * 0.29289)
+
+
+def _fill_cover_with_meta(slide, src_slide, info: dict, cfg: DeckMigrateConfig) -> None:
+    """Cover with an eyebrow, a subtitle, a source line and icons around the title: each goes
+    where it belongs on the academy cover (eyebrow above the title, icons under the text, the
+    source line below the card) instead of being dropped or merged into one run."""
+    prs = src_slide.part.package.presentation_part.presentation
+    sw, sh_h = int(prs.slide_width), int(prs.slide_height)
+    roles = split_cover_roles(info["blocks"], sh_h / 914400)
+    subs = [_normalize_header_line(t) for t in roles["subtitle"]]
+    if cfg.cover_subtitle:
+        subs.insert(0, cfg.cover_subtitle)
+    title = _normalize_header_line(roles["title"] or "강의")
+    _fill_cover(slide, ["\n".join([title, *subs])], title_font_pt=36, body_font_pt=20)
+
+    box = max(adl._non_placeholder_text_shapes(slide), key=lambda x: int(x.width) * int(x.height))
+    tf = box.text_frame
+    line_count = 1 + len(subs)
+    if roles["eyebrow"]:
+        first = tf.paragraphs[0]._p
+        clone = copy.deepcopy(first)
+        first.addprevious(clone)
+        eyebrow = tf.paragraphs[0]
+        for extra in eyebrow.runs[1:]:
+            extra._r.getparent().remove(extra._r)
+        eyebrow.runs[0].text = _normalize_header_line(" ".join(roles["eyebrow"]))
+        eyebrow.runs[0].font.size = Pt(14)
+        eyebrow.runs[0].font.bold = True
+        line_count += 1
+
+    inset = _text_rect_inset_emu(box)
+    margin_l = int(tf.margin_left or 0) + inset
+    text_bottom = int(box.top) + int(tf.margin_top or 0) + inset + int(
+        (14 * 1.45 if roles["eyebrow"] else 0) * 12700
+        + 36 * 1.45 * 12700
+        + len(subs) * 20 * 1.45 * 12700
+    )
+    box_bottom = int(box.top) + int(box.height)
+
+    icons = _cover_icon_pictures(src_slide, sw, sh_h)
+    x = int(box.left) + margin_l
+    for pic in icons:
+        w, h = int(pic.width), int(pic.height)
+        scale = min(COVER_ICON_DRAW_EMU / max(w, h), 1.0)
+        w, h = max(int(w * scale), 1), max(int(h * scale), 1)
+        y = min(text_bottom + COVER_ICON_GAP_EMU, box_bottom - h - int(0.1 * 914400))
+        try:
+            blob = pic.image.blob
+        except Exception:
+            continue
+        slide.shapes.add_picture(io.BytesIO(blob), x, y, width=w, height=h)
+        x += w + COVER_ICON_GAP_EMU
+
+    if roles["footer"]:
+        note = slide.shapes.add_textbox(
+            int(box.left) + margin_l, box_bottom + COVER_ICON_GAP_EMU, int(9.8 * 914400), int(0.4 * 914400)
+        )
+        note.text_frame.text = _normalize_header_line(" ".join(roles["footer"]))
+        note.text_frame.word_wrap = True
+        run = note.text_frame.paragraphs[0].runs[0]
+        run.font.size = Pt(11)
+        run.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
+        adl.set_tf_font(note.text_frame, title=False)
+
+
 def fill_cover_from_source(slide, src_slide, cfg: DeckMigrateConfig) -> None:
     info = analyze_slide_with_llm(src_slide)
     if info.get("body_heavy") and info.get("cover_meta_only"):
-        # Eyebrow / subtitle / source line around the title: keep every line, title first.
-        lines = [_normalize_header_line(t) for t in cover_lines(info["blocks"])]
-        if cfg.cover_subtitle:
-            lines.insert(1, cfg.cover_subtitle)
-        _fill_cover(slide, ["\n".join(lines)], title_font_pt=36, body_font_pt=16)
+        _fill_cover_with_meta(slide, src_slide, info, cfg)
         return
     title, governing = extract_header(src_slide, "cover")
     cover_text = title or "강의"
