@@ -16,7 +16,9 @@ from pptx.enum.text import MSO_AUTO_SIZE
 from pptx.opc.constants import RELATIONSHIP_TYPE as RT
 from pptx.opc.package import Part
 from pptx.opc.packuri import PackURI
+from pptx.oxml.ns import qn
 from pptx.parts.chart import ChartPart
+from pptx.shapes.shapetree import BaseShapeFactory
 from pptx.util import Pt
 
 ACADEMY = Path(
@@ -411,6 +413,53 @@ def _group_child_position(group, child, off_l: int, off_t: int) -> tuple[int, in
         pass
     
     return off_l + g_l + c_l, off_t + g_t + c_t
+
+
+def _group_scale(group) -> tuple[float, float]:
+    """(x, y) scale from a group's child space to the slide (1.0 when unscaled/unknown)."""
+    try:
+        xfrm = group._element.grpSpPr.xfrm
+        ext, ch_ext = xfrm.ext, xfrm.chExt
+        if ext is None or ch_ext is None or not ch_ext.cx or not ch_ext.cy:
+            return 1.0, 1.0
+        return ext.cx / ch_ext.cx, ext.cy / ch_ext.cy
+    except Exception:
+        return 1.0, 1.0
+
+
+def _scaled_group_children(group) -> list:
+    """Children of a group whose child space is scaled (``ext`` != ``chExt``), with their
+    offsets and sizes already converted to slide coordinates.
+
+    Flattening a group copies its children out of the group, so the group's scale has to be
+    applied to the children; otherwise each one keeps its child-space size (a 2.4in icon group
+    whose picture is 3.6in in child space came out 50% too big and overlapped the table).
+    Unscaled groups are returned as they are.
+    """
+    sx, sy = _group_scale(group)
+    if abs(sx - 1.0) < 0.01 and abs(sy - 1.0) < 0.01:
+        return list(group.shapes)
+    xfrm = group._element.grpSpPr.xfrm
+    g_x, g_y = int(xfrm.off.x), int(xfrm.off.y)
+    ch_x = int(xfrm.chOff.x) if xfrm.chOff is not None else 0
+    ch_y = int(xfrm.chOff.y) if xfrm.chOff is not None else 0
+    children = []
+    for child in group.shapes:
+        el = deepcopy(child._element)
+        for path in ("p:spPr/a:xfrm", "p:grpSpPr/a:xfrm", "p:xfrm"):
+            node = el.find("/".join(qn(part) for part in path.split("/")))
+            if node is None:
+                continue
+            off, ext = node.find(qn("a:off")), node.find(qn("a:ext"))
+            if off is not None:
+                off.set("x", str(g_x + int((int(off.get("x")) - ch_x) * sx)))
+                off.set("y", str(g_y + int((int(off.get("y")) - ch_y) * sy)))
+            if ext is not None:
+                ext.set("cx", str(int(int(ext.get("cx")) * sx)))
+                ext.set("cy", str(int(int(ext.get("cy")) * sy)))
+            break
+        children.append(BaseShapeFactory(el, group.shapes))
+    return children
 
 
 def clone_connector_xml(shape, slide, off_l: int = 0, off_t: int = 0) -> None:
@@ -903,7 +952,7 @@ def copy_shape_hybrid(
     n_before = len(dst_slide.shapes)
     st = shape.shape_type
     if st == MSO_SHAPE_TYPE.GROUP:
-        for child in shape.shapes:
+        for child in _scaled_group_children(shape):
             c_left, c_top = _group_child_position(shape, child, off_l, off_t)
             copy_shape_hybrid(
                 dst_slide,
