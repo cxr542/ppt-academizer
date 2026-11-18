@@ -1179,16 +1179,28 @@ def _fill_cover_with_meta(slide, src_slide, info: dict, cfg: DeckMigrateConfig) 
         eyebrow.runs[0].font.bold = True
         line_count += 1
 
+    icons = _cover_icon_pictures(src_slide, sw, sh_h)
+    text_h = int(
+        ((14 * 1.45 if roles["eyebrow"] else 0) + 36 * 1.45 + len(subs) * 20 * 1.45) * 12700
+    )
+    icon_h = 0
+    for pic in icons:
+        scale = min(COVER_ICON_DRAW_EMU / max(int(pic.width), int(pic.height)), 1.0)
+        icon_h = max(icon_h, int(int(pic.height) * scale))
+    icon_row = (COVER_ICON_GAP_EMU + icon_h + int(0.1 * 914400)) if icons else 0
+    pad = int(tf.margin_top or 0) + int(tf.margin_bottom or 0)
+    # The card's text area shrinks with its rounded corners, which grow with its height.
+    for _ in range(4):
+        inset = _text_rect_inset_emu(box)
+        needed = pad + 2 * inset + text_h + icon_row
+        if int(box.height) >= needed:
+            break
+        box.height = needed
     inset = _text_rect_inset_emu(box)
     margin_l = int(tf.margin_left or 0) + inset
-    text_bottom = int(box.top) + int(tf.margin_top or 0) + inset + int(
-        (14 * 1.45 if roles["eyebrow"] else 0) * 12700
-        + 36 * 1.45 * 12700
-        + len(subs) * 20 * 1.45 * 12700
-    )
+    text_bottom = int(box.top) + int(tf.margin_top or 0) + inset + text_h
     box_bottom = int(box.top) + int(box.height)
 
-    icons = _cover_icon_pictures(src_slide, sw, sh_h)
     x = int(box.left) + margin_l
     for pic in icons:
         w, h = int(pic.width), int(pic.height)

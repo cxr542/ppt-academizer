@@ -70,7 +70,7 @@ def test_filled_cover_places_eyebrow_icons_and_source_line() -> None:
         src.shapes.add_picture(buf, Inches(0.9 + i * 1.05), Inches(5.2), icon, icon)
 
     dst = prs.slides.add_slide(prs.slide_layouts[6])
-    box = dst.shapes.add_textbox(Inches(0.57), Inches(2.08), Inches(10.8), Inches(2.98))
+    box = dst.shapes.add_textbox(Inches(0.57), Inches(2.08), Inches(10.8), Inches(1.5))
     box.text_frame.text = "x"
     info = analyze_slide_with_llm(src)
     bca._fill_cover_with_meta(dst, src, info, bca.config_for_kind(bca.GENERIC_KIND))
@@ -82,6 +82,7 @@ def test_filled_cover_places_eyebrow_icons_and_source_line() -> None:
     pics = [s for s in dst.shapes if s.shape_type == 13]
     assert len(pics) == 2 and pics[0].left < pics[1].left
     assert all(p.top + p.height <= box.top + box.height for p in pics)
+    assert all(p.top >= box.top + Inches(1.4) for p in pics)  # under the text, not over it
     note = [s for s in dst.shapes if s.has_text_frame and s.text_frame.text.startswith("자료 기준")]
     assert note and note[0].top >= box.top + box.height
 
