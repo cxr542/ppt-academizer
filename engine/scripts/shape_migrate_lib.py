@@ -816,6 +816,88 @@ def _copy_font_from_source(dst_shape, src_shape) -> None:
         pass
 
 
+_A_NS = "http://schemas.openxmlformats.org/drawingml/2006/main"
+_BODY_PR_KEEP_ATTRS = ("anchor", "lIns", "tIns", "rIns", "bIns")
+
+
+def _copy_geometry_adjustments(dst_shape, src_shape) -> None:
+    """Keep the corner radius (and other adjust handles) of a preset shape.
+
+    ``add_shape`` starts from the preset's default; a card drawn with a 5% corner would come out
+    with the 17% default and look like a different shape.
+    """
+    try:
+        src_geom = src_shape._element.find(f".//{{{_A_NS}}}prstGeom")
+        dst_geom = dst_shape._element.find(f".//{{{_A_NS}}}prstGeom")
+        if src_geom is None or dst_geom is None or src_geom.get("prst") != dst_geom.get("prst"):
+            return
+        src_av = src_geom.find(f"{{{_A_NS}}}avLst")
+        if src_av is None or not len(src_av):
+            return
+        dst_av = dst_geom.find(f"{{{_A_NS}}}avLst")
+        if dst_av is None:
+            dst_av = dst_geom.makeelement(f"{{{_A_NS}}}avLst")
+            dst_geom.append(dst_av)
+        for old in list(dst_av):
+            dst_av.remove(old)
+        for gd in src_av:
+            dst_av.append(deepcopy(gd))
+    except Exception:
+        pass
+
+
+def _normalize_bullet(ppr) -> None:
+    """Academy bullet look (accent6 round bullet, template margin) for a copied bullet list."""
+    from scripts.academy_elements_style import BULLET_INDENT, BULLET_MARGIN, _order_ppr_children
+
+    if ppr.find(f"{{{_A_NS}}}buChar") is None:
+        return
+    ppr.set("marL", BULLET_MARGIN)
+    ppr.set("indent", BULLET_INDENT)
+    for tag in ("buClrTx", "buClr", "buFontTx", "buFont", "buChar"):
+        for old in ppr.findall(f"{{{_A_NS}}}{tag}"):
+            ppr.remove(old)
+    bu_clr = ppr.makeelement(f"{{{_A_NS}}}buClr")
+    bu_clr.append(bu_clr.makeelement(f"{{{_A_NS}}}schemeClr", {"val": "accent6"}))
+    ppr.append(bu_clr)
+    ppr.append(ppr.makeelement(f"{{{_A_NS}}}buFont", {"typeface": "Arial"}))
+    ppr.append(ppr.makeelement(f"{{{_A_NS}}}buChar", {"char": "\u2022"}))
+    _order_ppr_children(ppr)
+
+
+def _copy_text_layout_from_source(dst_shape, src_shape) -> None:
+    """Carry over what the flat ``text = ...`` copy drops: vertical anchor and insets of the box,
+    and per paragraph its alignment, spacing and bullet. Without it a centred label jumps to the
+    top left and a bullet list turns into plain lines."""
+    if not (dst_shape.has_text_frame and src_shape.has_text_frame):
+        return
+    try:
+        src_body = src_shape.text_frame._txBody
+        dst_body = dst_shape.text_frame._txBody
+        src_bpr = src_body.find(f"{{{_A_NS}}}bodyPr")
+        dst_bpr = dst_body.find(f"{{{_A_NS}}}bodyPr")
+        if src_bpr is not None and dst_bpr is not None:
+            for attr in _BODY_PR_KEEP_ATTRS:
+                if src_bpr.get(attr) is not None:
+                    dst_bpr.set(attr, src_bpr.get(attr))
+        src_paras = src_body.findall(f"{{{_A_NS}}}p")
+        dst_paras = dst_body.findall(f"{{{_A_NS}}}p")
+        for sp, dp in zip(src_paras, dst_paras):
+            src_ppr = sp.find(f"{{{_A_NS}}}pPr")
+            if src_ppr is None:
+                continue
+            for old in dp.findall(f"{{{_A_NS}}}pPr"):
+                dp.remove(old)
+            ppr = deepcopy(src_ppr)
+            for tag in ("defRPr", "extLst"):
+                for old in ppr.findall(f"{{{_A_NS}}}{tag}"):
+                    ppr.remove(old)
+            _normalize_bullet(ppr)
+            dp.insert(0, ppr)
+    except Exception:
+        pass
+
+
 def copy_textbox_native(slide, shape, left=None, top=None) -> None:
     """Copy textbox; solid empty cards become rectangles so fills survive in PP."""
     left_v = left if left is not None else shape.left
@@ -838,6 +920,7 @@ def copy_textbox_native(slide, shape, left=None, top=None) -> None:
     if shape.has_text_frame:
         box.text_frame.text = shape.text
         _copy_font_from_source(box, shape)
+        _copy_text_layout_from_source(box, shape)
 
 
 def _apply_terminal_fill(dst_shape, src_shape) -> None:
@@ -874,6 +957,7 @@ def copy_autoshape_native(slide, shape, left, top) -> None:
     except (ValueError, AttributeError):
         auto_type = MSO_SHAPE.RECTANGLE
     box = slide.shapes.add_shape(auto_type, left, top, shape.width, shape.height)
+    _copy_geometry_adjustments(box, shape)
     _copy_fill(box, shape)
     _apply_terminal_fill(box, shape)
     _copy_line(box, shape)
@@ -884,6 +968,7 @@ def copy_autoshape_native(slide, shape, left, top) -> None:
         if shape.text.strip():
             tf.text = shape.text
             _copy_font_from_source(box, shape)
+            _copy_text_layout_from_source(box, shape)
             if _is_no_fill_text_shape(shape):
                 _set_shape_line_no_fill(box)
 
