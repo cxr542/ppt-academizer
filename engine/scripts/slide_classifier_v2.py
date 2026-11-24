@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from pptx.enum.dml import MSO_FILL
 from pptx.enum.shapes import MSO_SHAPE_TYPE
 from pptx.util import Pt
 
@@ -50,6 +51,93 @@ def has_data_object(slide) -> bool:
         return False
 
     return _walk(slide.shapes)
+
+
+_P_NS = "{http://schemas.openxmlformats.org/presentationml/2006/main}"
+_A_NS = "{http://schemas.openxmlformats.org/drawingml/2006/main}"
+DARK_BACKGROUND_MAX_LUMA = 0.4
+
+
+def has_dark_background(slide) -> bool:
+    """True when the slide's own background (else its layout's) is dark: a solid or gradient fill
+    whose explicit RGB colors average darker than 0.4 luma. Theme-colored fills are not judged."""
+    for part in (slide, slide.slide_layout):
+        bg = part._element.find(f".//{_P_NS}bg")
+        if bg is None:
+            continue
+        lumas = []
+        for clr in bg.iter(f"{_A_NS}srgbClr"):
+            v = clr.get("val") or ""
+            if len(v) == 6:
+                r, g, b = (int(v[i : i + 2], 16) for i in (0, 2, 4))
+                lumas.append((0.299 * r + 0.587 * g + 0.114 * b) / 255)
+        return bool(lumas) and sum(lumas) / len(lumas) < DARK_BACKGROUND_MAX_LUMA
+    return False
+
+
+COVER_DIAGRAM_MIN_BOX_EMU = int(0.4 * 914400)
+COVER_DIAGRAM_MAX_CHARS = 160
+
+
+def _has_solid_fill(shape) -> bool:
+    try:
+        return shape.fill.type == MSO_FILL.SOLID
+    except Exception:
+        return False
+
+
+def cover_diagram_shapes(slide) -> list:
+    """Shapes of a "before -> after" style diagram on a cover: two or more filled boxes (at
+    least 0.4in each way, not a full-slide background) and everything whose center lies in the
+    area they span (their labels, the arrow between them). Empty when there is no such diagram."""
+    prs = slide.part.package.presentation_part.presentation
+    sw, sh_h = int(prs.slide_width), int(prs.slide_height)
+    fills = [
+        sh
+        for sh in slide.shapes
+        if sh.shape_type == MSO_SHAPE_TYPE.AUTO_SHAPE
+        and not (sh.has_text_frame and sh.text_frame.text.strip())
+        and _has_solid_fill(sh)
+        and int(sh.width or 0) >= COVER_DIAGRAM_MIN_BOX_EMU
+        and int(sh.height or 0) >= COVER_DIAGRAM_MIN_BOX_EMU
+        and not (int(sh.width) >= 0.9 * sw and int(sh.height) >= 0.9 * sh_h)
+    ]
+    if len(fills) < 2:
+        return []
+    left = min(int(f.left) for f in fills)
+    top = min(int(f.top) for f in fills)
+    right = max(int(f.left) + int(f.width) for f in fills)
+    bottom = max(int(f.top) + int(f.height) for f in fills)
+    found = []
+    for sh in slide.shapes:
+        cx = int(sh.left or 0) + int(sh.width or 0) // 2
+        cy = int(sh.top or 0) + int(sh.height or 0) // 2
+        if left <= cx <= right and top <= cy <= bottom:
+            found.append(sh)
+    return found
+
+
+def _norm_text(text: str) -> str:
+    return "".join(text.split())
+
+
+def _is_cover_with_diagram(slide, blocks: list[dict], data_object: bool) -> bool:
+    """A cover whose body is one small diagram (boxes with short labels) around cover-like
+    text: the diagram can be kept on the cover instead of dropping it."""
+    if data_object or not blocks:
+        return False
+    diagram = cover_diagram_shapes(slide)
+    if not diagram:
+        return False
+    labels = {
+        _norm_text(sh.text_frame.text)
+        for sh in diagram
+        if sh.has_text_frame and sh.text_frame.text.strip()
+    }
+    if sum(len(t) for t in labels) > COVER_DIAGRAM_MAX_CHARS:
+        return False
+    rest = [b for b in blocks if _norm_text(b["text"]) not in labels]
+    return _is_cover_meta_only(rest, False)
 
 
 class TextBand:
@@ -242,6 +330,17 @@ def analyze_slide_layout(slide) -> dict[str, Any]:
             divider_band = divider_band if divider_band.avg_font_size >= COVER_TITLE_MIN_EMU else None
         if len(blocks) <= 3 and divider_band and divider_band.top >= 2.0:
             scores["section"] += 60
+        elif (
+            len(blocks) == 1
+            and len(slide.shapes) <= 2
+            and not has_data_object(slide)
+            and not any(sh.shape_type == MSO_SHAPE_TYPE.PICTURE for sh in slide.shapes)
+            and has_dark_background(slide)
+        ):
+            # A slide that holds nothing but one title line on a dark background is a divider
+            # wherever the title sits (a top-left title on a gradient is a common divider
+            # design). On a white slide a lone header title stays "content".
+            scores["section"] += 60
 
         scores["content"] = 40
         if content_bands and len(blocks) > 3:
@@ -277,4 +376,6 @@ def analyze_slide_layout(slide) -> dict[str, Any]:
         # True when the "body" is only short one-line meta text (eyebrow, subtitle, source
         # line) around a title, as on a real cover; ``cover_lines`` keeps all of it.
         "cover_meta_only": _is_cover_meta_only(blocks, data_object),
+        # True when a cover also carries one small diagram (boxes with short labels).
+        "cover_diagram": _is_cover_with_diagram(slide, blocks, data_object),
     }

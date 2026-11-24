@@ -38,4 +38,5 @@ def analyze_slide_with_llm(slide, slide_index: int = -1) -> dict[str, Any]:
         "blocks": blocks,
         "body_heavy": bool(fallback_info.get("body_heavy")),
         "cover_meta_only": bool(fallback_info.get("cover_meta_only")),
+        "cover_diagram": bool(fallback_info.get("cover_diagram")),
     }

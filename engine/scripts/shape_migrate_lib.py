@@ -54,6 +54,8 @@ OFFICE_EXT_URIS = (
 )
 
 HEADER_BOTTOM_EMU = 1_150_000
+CARD_HEADER_MIN_H_EMU = 300_000
+CARD_HEADER_MAX_H_EMU = 520_000
 # Deck-specific names live in config/deck_kinds.json (global_skip_shape_names); see deck_migrate_config.
 NUM_LEFT, NUM_TOP = 515_938, 360_540
 NUM_WIDTH = 400_000  # two-digit step numbers (10, 11, …)
@@ -269,11 +271,21 @@ def is_body_shape(shape, title: str | None, governing: str | None) -> bool:
                     return True
                 if not text and _is_filled_chrome():
                     return True
+            # A card's header bar starts just under the source title row (about 1.1in) and is
+            # about 0.5in tall; it is body chrome, not the source header.
+            if (
+                not text
+                and top >= 850_000
+                and CARD_HEADER_MIN_H_EMU <= h <= CARD_HEADER_MAX_H_EMU
+                and w >= 1_500_000
+                and _is_filled_chrome()
+            ):
+                return True
             # Compact section labels just under the governing strip (e.g. Control Plane · Master).
             if (
                 text
                 and top >= 850_000
-                and h <= 450_000
+                and h <= CARD_HEADER_MAX_H_EMU
                 and w < 8_000_000
                 and left < 10_000_000
             ):
