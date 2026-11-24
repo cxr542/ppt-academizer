@@ -218,9 +218,15 @@ def ensure_brand_pictures(slide, pack: dict, kind: str) -> int:
         return 0
     root = pack["dir"]
     added = 0
-    for _name, spec in placements.items():
+    for name, spec in placements.items():
         rel = spec.get("file")
         if not rel:
+            continue
+        # The copyright line is a picture with a year baked into its pixels ("© 2025"). The
+        # academy layouts already carry it as text, and its year is set to the conversion
+        # year (apply_current_year_to_footers), so the stamped picture would only print a
+        # stale year over it.
+        if "copyright" in name.lower():
             continue
         path = root / rel
         if not path.is_file():

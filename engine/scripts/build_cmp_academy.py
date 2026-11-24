@@ -51,7 +51,7 @@ from scripts.deck_migrate_config import (  # noqa: E402
 )
 from scripts.pptx_ingest import iter_shapes, iter_shapes_abs, slide_notes_text  # noqa: E402
 from scripts.llm_classifier import analyze_slide_with_llm  # noqa: E402
-from scripts.slide_classifier_v2 import split_cover_roles  # noqa: E402
+from scripts.slide_classifier_v2 import cover_diagram_shapes, split_cover_roles  # noqa: E402
 
 import scripts.academy_deck_build_lib as adl  # noqa: E402
 from scripts.academy_deck_build_lib import (  # noqa: E402,F401  (re-exported for tests)
@@ -336,7 +336,9 @@ def build_slide_plan(
             # Slide 0 is the cover unless it carries a table/chart or a real body of text:
             # a cover is migrated as title text only, so those would be dropped.
             info0 = analyze_slide_with_llm(slide)
-            heavy = info0.get("body_heavy") and not info0.get("cover_meta_only")
+            heavy = info0.get("body_heavy") and not (
+                info0.get("cover_meta_only") or info0.get("cover_diagram")
+            )
             plan.append((i, "content" if heavy else "cover"))
             continue
         kind = classify_slide(slide, i, cfg.part_cover_indices)
@@ -1119,6 +1121,8 @@ def apply_brand_pack_to_slide(
 COVER_ICON_MAX_EMU = int(2.0 * 914400)
 COVER_ICON_DRAW_EMU = int(0.9 * 914400)
 COVER_ICON_GAP_EMU = int(0.2 * 914400)
+# The academy cover has a logo at the card's lower right; keep a diagram clear of it.
+COVER_DIAGRAM_RIGHT_GAP_EMU = int(0.4 * 914400)
 
 
 def _cover_icon_pictures(src_slide, slide_width: int, slide_height: int) -> list:
@@ -1157,7 +1161,16 @@ def _fill_cover_with_meta(slide, src_slide, info: dict, cfg: DeckMigrateConfig) 
     source line below the card) instead of being dropped or merged into one run."""
     prs = src_slide.part.package.presentation_part.presentation
     sw, sh_h = int(prs.slide_width), int(prs.slide_height)
-    roles = split_cover_roles(info["blocks"], sh_h / 914400)
+    diagram = cover_diagram_shapes(src_slide) if info.get("cover_diagram") else []
+    diagram_labels = {
+        "".join(d.text_frame.text.split())
+        for d in diagram
+        if d.has_text_frame and d.text_frame.text.strip()
+    }
+    roles = split_cover_roles(
+        [b for b in info["blocks"] if "".join(b["text"].split()) not in diagram_labels],
+        sh_h / 914400,
+    )
     subs = [_normalize_header_line(t) for t in roles["subtitle"]]
     if cfg.cover_subtitle:
         subs.insert(0, cfg.cover_subtitle)
@@ -1189,6 +1202,17 @@ def _fill_cover_with_meta(slide, src_slide, info: dict, cfg: DeckMigrateConfig) 
         icon_h = max(icon_h, int(int(pic.height) * scale))
     icon_row = (COVER_ICON_GAP_EMU + icon_h + int(0.1 * 914400)) if icons else 0
     pad = int(tf.margin_top or 0) + int(tf.margin_bottom or 0)
+    d_left = min((int(d.left) for d in diagram), default=0)
+    d_top = min((int(d.top) for d in diagram), default=0)
+    d_w = max((int(d.left) + int(d.width) for d in diagram), default=0) - d_left
+    d_h = max((int(d.top) + int(d.height) for d in diagram), default=0) - d_top
+    d_scale = 1.0
+    if diagram and d_w > 0:
+        inner_w = int(box.width) - 2 * _text_rect_inset_emu(box) - 2 * int(tf.margin_left or 0)
+        inner_w -= COVER_DIAGRAM_RIGHT_GAP_EMU
+        d_scale = min(1.0, inner_w / d_w)
+    diagram_row = (COVER_ICON_GAP_EMU + int(d_h * d_scale)) if diagram else 0
+    icon_row += diagram_row
     # The card's text area shrinks with its rounded corners, which grow with its height.
     for _ in range(4):
         inset = _text_rect_inset_emu(box)
@@ -1198,6 +1222,11 @@ def _fill_cover_with_meta(slide, src_slide, info: dict, cfg: DeckMigrateConfig) 
         box.height = needed
     inset = _text_rect_inset_emu(box)
     margin_l = int(tf.margin_left or 0) + inset
+    if diagram and d_w > 0:
+        # The card grew, so its rounded corners (and the text area they cut) grew with it.
+        d_scale = min(
+            d_scale, (int(box.width) - 2 * margin_l - COVER_DIAGRAM_RIGHT_GAP_EMU) / d_w
+        )
     text_bottom = int(box.top) + int(tf.margin_top or 0) + inset + text_h
     box_bottom = int(box.top) + int(box.height)
 
@@ -1214,21 +1243,45 @@ def _fill_cover_with_meta(slide, src_slide, info: dict, cfg: DeckMigrateConfig) 
         slide.shapes.add_picture(io.BytesIO(blob), x, y, width=w, height=h)
         x += w + COVER_ICON_GAP_EMU
 
+    if diagram:
+        d_x = int(box.left) + margin_l
+        d_y = text_bottom + COVER_ICON_GAP_EMU
+        if icons:
+            d_y += icon_h + int(0.1 * 914400)
+        for src_shape in diagram:
+            before = len(slide.shapes)
+            bac.copy_shape_hybrid(slide, src_shape, id_remap={})
+            for new_shape in list(slide.shapes)[before:]:
+                new_shape.left = d_x + int((int(new_shape.left) - d_left) * d_scale)
+                new_shape.top = d_y + int((int(new_shape.top) - d_top) * d_scale)
+                new_shape.width = max(int(int(new_shape.width) * d_scale), 1)
+                new_shape.height = max(int(int(new_shape.height) * d_scale), 1)
+                if d_scale < 1.0 and new_shape.has_text_frame:
+                    for para in new_shape.text_frame.paragraphs:
+                        for run in para.runs:
+                            if run.font.size:
+                                run.font.size = Pt(max(8, run.font.size.pt * d_scale))
+
     if roles["footer"]:
+        lines = [_normalize_header_line(t) for t in roles["footer"]]
         note = slide.shapes.add_textbox(
-            int(box.left) + margin_l, box_bottom + COVER_ICON_GAP_EMU, int(9.8 * 914400), int(0.4 * 914400)
+            int(box.left) + margin_l,
+            box_bottom + COVER_ICON_GAP_EMU,
+            int(9.8 * 914400),
+            int(0.3 * 914400 * len(lines)),
         )
-        note.text_frame.text = _normalize_header_line(" ".join(roles["footer"]))
+        note.text_frame.text = "\n".join(lines)
         note.text_frame.word_wrap = True
-        run = note.text_frame.paragraphs[0].runs[0]
-        run.font.size = Pt(11)
-        run.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
+        for para in note.text_frame.paragraphs:
+            for run in para.runs:
+                run.font.size = Pt(11)
+                run.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
         adl.set_tf_font(note.text_frame, title=False)
 
 
 def fill_cover_from_source(slide, src_slide, cfg: DeckMigrateConfig) -> None:
     info = analyze_slide_with_llm(src_slide)
-    if info.get("body_heavy") and info.get("cover_meta_only"):
+    if info.get("body_heavy") and (info.get("cover_meta_only") or info.get("cover_diagram")):
         _fill_cover_with_meta(slide, src_slide, info, cfg)
         return
     title, governing = extract_header(src_slide, "cover")
