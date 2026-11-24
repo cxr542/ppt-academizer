@@ -1709,6 +1709,45 @@ def apply_current_year_to_footers(prs, year: int | None = None) -> int:
     return changed
 
 
+# On a light layout the template draws the footer in pale grey (C8C8D0) and the picture's own
+# opacity (~37%) makes it nearly invisible on white. Light layouts get a mid grey at full opacity;
+# the white footers of the dark layouts only get a floor on the opacity.
+FOOTER_LIGHT_BG_COLOR = "8A8AA0"
+FOOTER_DARK_BG_MIN_ALPHA_PCT = 60
+
+
+def _srgb_luma(hexval: str) -> float:
+    r, g, b = (int(hexval[i : i + 2], 16) for i in (0, 2, 4))
+    return (0.299 * r + 0.587 * g + 0.114 * b) / 255
+
+
+def strengthen_footer_legibility(prs) -> int:
+    """Make the layout copyright text readable. Returns the number of footers changed."""
+    ns = {"a": "http://schemas.openxmlformats.org/drawingml/2006/main"}
+    changed = 0
+    for layout in prs.slide_layouts:
+        for shape in layout.shapes:
+            if not getattr(shape, "has_text_frame", False) or shape.is_placeholder:
+                continue
+            if not _FOOTER_YEAR_RE.search(shape.text_frame.text):
+                continue
+            for clr in shape._element.xpath(".//a:rPr/a:solidFill/a:srgbClr"):
+                val = clr.get("val") or ""
+                if len(val) != 6:
+                    continue
+                alpha = clr.find("a:alpha", ns)
+                if _srgb_luma(val) >= 0.97:  # white footer on a dark layout
+                    if alpha is not None and int(alpha.get("val", "100000")) < FOOTER_DARK_BG_MIN_ALPHA_PCT * 1000:
+                        alpha.set("val", str(FOOTER_DARK_BG_MIN_ALPHA_PCT * 1000))
+                        changed += 1
+                elif _srgb_luma(val) > 0.6:  # pale grey on a light layout
+                    clr.set("val", FOOTER_LIGHT_BG_COLOR)
+                    if alpha is not None:
+                        clr.remove(alpha)
+                    changed += 1
+    return changed
+
+
 def fit_course_name_pt(name: str) -> int:
     """Font size so the one-line course name stays on the slide (template uses 24pt)."""
     return 24 if len(name) <= 30 else 18 if len(name) <= 40 else 14
@@ -2088,6 +2127,7 @@ def _migrate_cmp_deck_body(
     )
     remove_footers_from_layouts(prs)
     apply_current_year_to_footers(prs)
+    strengthen_footer_legibility(prs)
 
     initial_part_ids = {id(s.part) for s in prs.slides}
 
