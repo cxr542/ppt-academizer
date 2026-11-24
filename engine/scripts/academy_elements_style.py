@@ -239,6 +239,11 @@ def _has_bullet(paragraph_el) -> bool:
     )
 
 
+def _has_explicit_no_bullet(paragraph_el) -> bool:
+    ppr = paragraph_el.find(_q("pPr"))
+    return ppr is not None and ppr.find(_q("buNone")) is not None
+
+
 def _paragraph_text(paragraph_el) -> str:
     return "".join(t.text or "" for t in paragraph_el.iter(_q("t"))).strip()
 
@@ -272,6 +277,9 @@ def _bulletize(shape) -> bool:
     if len(paras) < BULLET_MIN_PARAGRAPHS:
         return False
     if any(len(_paragraph_text(p)) < BULLET_MIN_CHARS or _has_bullet(p) for p in paras):
+        return False
+    # The source said "no bullet" outright (an explicit buNone): do not guess a list there.
+    if any(_has_explicit_no_bullet(p) for p in paras):
         return False
     for p in paras:
         ppr = p.find(_q("pPr"))
